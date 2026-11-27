@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BTM Monitor</string>
+    <string name="listener_service_label">Pembaca Notifikasi Bank (BTM)</string>
+    <string name="channel_sync_name">Sinkronisasi</string>
+    <string name="channel_sync_description">Notifikasi singkat saat data monitoring dikirim (hanya Android 8 sampai 11).</string>
+</resources>

@@ -1,0 +1,23 @@
+# Gradle / Android Studio
+.gradle/
+build/
+/app/build/
+/local.properties
+/.idea/
+*.iml
+.DS_Store
+/captures/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Artefak build
+*.apk
+*.aab
+/app/release/
+/app/debug/
+
+# Kunci penandatanganan (JANGAN di-commit)
+*.jks
+*.keystore
+keystore.properties
