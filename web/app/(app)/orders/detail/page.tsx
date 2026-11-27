@@ -1,15 +1,25 @@
 'use client';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { CandidateStatusBadge, MatchStatusBadge, OrderStatusBadge, PaymentStatusBadge, ScoreBar, WebhookStatusBadge } from '@/components/status';
 import { Callout, Card, Empty, ErrorBox, JsonView, Loading, PageHeader } from '@/components/ui';
 import { dateTime, rupiah } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import type { OrderDetail } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 export default function OrderDetailPage() {
-  const { id } = useParams<{ id: string }>();
-  const state = useApi<OrderDetail>(`/orders/${encodeURIComponent(decodeURIComponent(id))}`);
+  return (
+    <Suspense fallback={<Loading />}>
+      <OrderDetailView />
+    </Suspense>
+  );
+}
+
+function OrderDetailView() {
+  const id = useSearchParams().get('id') ?? '';
+  const state = useApi<OrderDetail>(`/orders/${encodeURIComponent(id)}`);
 
   if (state.error && !state.data) {
     return (
@@ -58,7 +68,7 @@ export default function OrderDetailPage() {
           <Card title="Transaksi pembayaran">
             {t ? (
               <dl className="kv">
-                <dt>Transaction ID</dt><dd><Link href={`/transactions/${t.id}`} className="strong">{t.transaction_code}</Link></dd>
+                <dt>Transaction ID</dt><dd><Link href={routes.transaction(t.id)} className="strong">{t.transaction_code}</Link></dd>
                 <dt>Status</dt><dd>{t.match_status && <MatchStatusBadge status={t.match_status} />}</dd>
                 <dt>Bank / rekening</dt><dd>{t.bank_code} · {t.account_alias ?? '-'}</dd>
                 <dt>Pengirim</dt><dd>{t.sender_name ?? '-'}</dd>
@@ -81,7 +91,7 @@ export default function OrderDetailPage() {
                 <tbody>
                   {candidates.map((c) => (
                     <tr key={c.id}>
-                      <td><Link href={`/transactions/${c.transaction_id}`} className="strong">{c.transaction_code}</Link></td>
+                      <td><Link href={routes.transaction(c.transaction_id)} className="strong">{c.transaction_code}</Link></td>
                       <td className="nowrap num">{dateTime(c.received_time)}</td>
                       <td>{c.sender_name ?? '-'}</td>
                       <td>{c.bank_code}<div className="sub">{c.account_alias ?? ''}</div></td>

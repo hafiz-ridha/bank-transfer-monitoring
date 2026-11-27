@@ -1,6 +1,6 @@
 # Bank Transfer Monitor — Kontrak API v1
 
-Base URL: `https://api.contoh.co.id/api/v1` (lokal: `http://localhost:4000/api/v1`). Semua body JSON UTF-8.
+Base URL: `https://btm.contoh.co.id/api/v1` (lokal: `http://localhost:4000/api/v1`). Dashboard disajikan di origin yang sama (`/`). Semua body JSON UTF-8.
 Waktu: ISO-8601 (`2026-11-27T10:00:00+07:00` atau `...Z`). Nominal: integer rupiah (tanpa desimal).
 
 ## Konvensi umum
@@ -310,3 +310,4 @@ function verify(req, rawBody, secret) {
 ## D. Health
 - `GET /healthz` → `{ ok: true }` (proses hidup)
 - `GET /readyz` → `{ ok: true, db }` atau 503 (database tidak dapat dijangkau)
+- `GET /app-config.js` → konfigurasi publik dashboard (`window.__BTM_CONFIG__`: `supabaseUrl`, `supabaseAnonKey`, `authMode`); hanya bila dashboard tersedia. Tanpa dashboard, `GET /` menjawab info service JSON.

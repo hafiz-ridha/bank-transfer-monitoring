@@ -10,6 +10,7 @@ import { firstOfMonthYmd, num, parseIntInput, rupiah, timeSmart, dateTime, today
 import { useApi, useInitialQuery } from '@/lib/hooks';
 import { MATCH_STATUS, MATCH_STATUS_ORDER, matchReasonLabel } from '@/lib/labels';
 import type { BankSource, ListResponse, MatchStatus, TransactionList } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 interface Filters {
   date_from: string;
@@ -221,9 +222,9 @@ export default function TransactionsPage() {
                   </thead>
                   <tbody>
                     {d.data.map((t) => (
-                      <tr key={t.id} className={cx('clickable', t.match_status === 'AMBIGUOUS' && 'row-warn')} onClick={() => router.push(`/transactions/${t.id}`)}>
+                      <tr key={t.id} className={cx('clickable', t.match_status === 'AMBIGUOUS' && 'row-warn')} onClick={() => router.push(routes.transaction(t.id))}>
                         <td className="nowrap">
-                          <Link href={`/transactions/${t.id}`} className="strong" onClick={(e) => e.stopPropagation()}>{t.transaction_code}</Link>
+                          <Link href={routes.transaction(t.id)} className="strong" onClick={(e) => e.stopPropagation()}>{t.transaction_code}</Link>
                           <div className="sub num" title={dateTime(t.transaction_time)}>{t.transaction_time ? timeSmart(t.transaction_time) : 'waktu tidak terbaca'}</div>
                         </td>
                         <td className="nowrap num" title={dateTime(t.received_time)}>{timeSmart(t.received_time)}</td>

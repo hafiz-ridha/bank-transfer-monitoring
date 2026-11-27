@@ -471,7 +471,7 @@ function ApiClientsSection({ isAdmin }: { isAdmin: boolean }) {
   return (
     <Card
       title="API POS"
-      hint={<>API key untuk sistem POS (header <code>X-API-Key</code>) ke <code>{config.apiUrl}/api/v1/pos/*</code></>}
+      hint={<>API key untuk sistem POS (header <code>X-API-Key</code>) ke <code>{config.publicApiUrl}/api/v1/pos/*</code></>}
       flush
       actions={isAdmin && <button type="button" className="btn sm primary" onClick={() => setCreating(true)}>+ Buat API key</button>}
     >

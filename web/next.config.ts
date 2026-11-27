@@ -1,21 +1,12 @@
 import type { NextConfig } from 'next';
 
+// Dashboard di-build sebagai static export (folder `out/`) lalu disajikan oleh backend Fastify
+// di container yang sama — satu domain untuk dashboard + API. Header keamanan diset oleh backend.
 const nextConfig: NextConfig = {
+  output: 'export',
   reactStrictMode: true,
   poweredByHeader: false,
-  // Semua data diambil di sisi klien dari backend (NEXT_PUBLIC_API_URL); tidak ada API route di sini.
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-        ],
-      },
-    ];
-  },
+  images: { unoptimized: true },
 };
 
 export default nextConfig;

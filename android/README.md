@@ -49,7 +49,7 @@ Instal ke HP (USB debugging aktif): `adb install -r app-debug.apk` (atau tombol 
 
 1. Dashboard web > **Perangkat > Tambah perangkat** → catat **kode pairing 8 karakter** (berlaku 24 jam, sekali pakai).
 2. Di dashboard, pastikan **Sumber Bank** sudah dibuat dan **aktif** (package name aplikasi bank, alias rekening).
-3. Buka aplikasi di HP → isi **URL server** (mis. `https://api.contoh.co.id`; akhiran `/api/v1` ditambahkan otomatis)
+3. Buka aplikasi di HP → isi **URL server** (mis. `https://btm.contoh.co.id`, domain yang sama dengan dashboard; akhiran `/api/v1` ditambahkan otomatis)
    dan **kode pairing** → **Pasangkan perangkat**.
    - Emulator ke backend lokal (build debug): `http://10.0.2.2:4000`. HP fisik di LAN: `http://192.168.x.x:4000`.
 4. Setelah berhasil, `device_token` disimpan terenkripsi (AES-256/GCM, kunci di Android Keystore).

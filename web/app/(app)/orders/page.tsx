@@ -9,6 +9,7 @@ import { dateTime, parseIntInput, rupiah } from '@/lib/format';
 import { useApi, useInitialQuery } from '@/lib/hooks';
 import { ORDER_STATUS, PAYMENT_STATUS } from '@/lib/labels';
 import type { Order, Paged } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 interface Filters {
   status: string;
@@ -144,8 +145,8 @@ export default function OrdersPage() {
                   </thead>
                   <tbody>
                     {d.data.map((o) => (
-                      <tr key={o.id} className={cx('clickable', (o.candidate_count ?? 0) > 0 && o.payment_status === 'UNPAID' && 'row-warn')} onClick={() => router.push(`/orders/${o.id}`)}>
-                        <td><Link href={`/orders/${o.id}`} className="mono small strong" onClick={(e) => e.stopPropagation()}>{o.order_id}</Link></td>
+                      <tr key={o.id} className={cx('clickable', (o.candidate_count ?? 0) > 0 && o.payment_status === 'UNPAID' && 'row-warn')} onClick={() => router.push(routes.order(o.id))}>
+                        <td><Link href={routes.order(o.id)} className="mono small strong" onClick={(e) => e.stopPropagation()}>{o.order_id}</Link></td>
                         <td>{o.customer_name ?? <span className="faint">-</span>}</td>
                         <td className="num strong">{rupiah(o.amount)}</td>
                         <td className="nowrap num">{dateTime(o.order_created_at, false)}</td>

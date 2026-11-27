@@ -8,6 +8,7 @@ import type { Alert } from '@/lib/types';
 import { AlertStatusBadge, SeverityBadge } from './status';
 import { useToast } from './toast';
 import { Empty, Spinner } from './ui';
+import { routes } from '@/lib/routes';
 
 /** Daftar alert perangkat (PRD §5.3) dengan tombol "Tandai diketahui". */
 export function AlertList({ alerts, onChanged, emptyText = 'Tidak ada alert aktif. Semua perangkat normal.' }: {
@@ -45,7 +46,7 @@ export function AlertList({ alerts, onChanged, emptyText = 'Tidak ada alert akti
             </div>
             <div className="mt-1">{a.message}</div>
             <div className="meta">
-              {a.device_id ? <Link href={`/devices/${a.device_id}`}>{a.device_name ?? 'Perangkat'}</Link> : a.device_name ?? '-'}
+              {a.device_id ? <Link href={routes.device(a.device_id)}>{a.device_name ?? 'Perangkat'}</Link> : a.device_name ?? '-'}
               {' · '}dibuka {dateTime(a.opened_at)} ({timeAgo(a.opened_at)})
               {a.acknowledged_at && <> · diketahui {dateTime(a.acknowledged_at)}</>}
               {a.resolved_at && <> · selesai {dateTime(a.resolved_at)}</>}

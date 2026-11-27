@@ -4,12 +4,14 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 import { randomUUID } from 'node:crypto';
 
-export async function setup({ fetchImpl } = {}) {
+export async function setup({ fetchImpl, env = {} } = {}) {
   const db = await createPgliteDb();
   await migrate(db, { log: () => {} });
   const config = loadConfig({
     NODE_ENV: 'test', AUTH_MODE: 'dev', DB_DRIVER: 'pglite', BOOTSTRAP_ADMIN_EMAILS: 'admin@test.local',
     CORS_ORIGINS: 'http://localhost:3000',
+    WEB_DIST_DIR: '', // default: API saja (dashboard diuji terpisah di dashboard.test.js)
+    ...env,
   });
   const sent = [];
   const fakeFetch = fetchImpl ?? (async (url, opts) => {

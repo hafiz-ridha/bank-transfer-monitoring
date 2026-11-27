@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth';
 import { dateTime, num, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import type { BankNotification, BankSource, ListResponse } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 /** Package name aplikasi bank Indonesia yang umum (WAJIB dicek ulang di HP asli). */
 const BANK_APP_PRESETS = [
@@ -289,7 +290,7 @@ function NotificationsModal({ source, onClose }: { source: BankSource; onClose: 
                       {n.text ?? <span className="faint">(teks mentah tidak tersedia)</span>}
                     </td>
                     <td className="json-cell"><JsonView value={n.parsed} summary="parsed" /></td>
-                    <td>{n.transaction_id ? <Link href={`/transactions/${n.transaction_id}`} className="btn xs">Lihat</Link> : <span className="faint">-</span>}</td>
+                    <td>{n.transaction_id ? <Link href={routes.transaction(n.transaction_id)} className="btn xs">Lihat</Link> : <span className="faint">-</span>}</td>
                   </tr>
                 ))}
               </tbody>

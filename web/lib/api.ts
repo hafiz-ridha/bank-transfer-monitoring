@@ -2,7 +2,7 @@
 // - Menyisipkan header Authorization: Bearer <token>
 // - Mengurai error { error: { code, message, details } }
 // - 401 => handler sesi berakhir (logout + arahkan ke /login); 403 => ApiError dengan pesan dari server
-import { API_BASE } from './config';
+import { apiBase } from './config';
 import { currentToken } from './session';
 
 export class ApiError extends Error {
@@ -66,10 +66,10 @@ async function rawFetch(method: string, path: string, opts: RequestOptions = {})
   }
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}${qs(opts.query)}`, { method, headers, body, signal: opts.signal, cache: 'no-store' });
+    res = await fetch(`${apiBase()}${path}${qs(opts.query)}`, { method, headers, body, signal: opts.signal, cache: 'no-store' });
   } catch (err) {
     if ((err as Error)?.name === 'AbortError') throw err;
-    throw new ApiError(0, 'NETWORK_ERROR', `Tidak dapat terhubung ke server API (${API_BASE}). Periksa koneksi internet atau konfigurasi NEXT_PUBLIC_API_URL.`);
+    throw new ApiError(0, 'NETWORK_ERROR', `Tidak dapat terhubung ke server API (${apiBase()}). Periksa koneksi internet atau status server.`);
   }
   if (!res.ok) {
     const err = await toApiError(res);

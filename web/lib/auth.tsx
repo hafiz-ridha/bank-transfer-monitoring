@@ -135,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (config.authMode === 'supabase') {
       if (!supabaseConfigured()) {
-        setError('Konfigurasi Supabase belum lengkap: isi NEXT_PUBLIC_SUPABASE_URL dan NEXT_PUBLIC_SUPABASE_ANON_KEY lalu build ulang.');
+        setError('Konfigurasi Supabase belum lengkap: isi SUPABASE_URL dan SUPABASE_ANON_KEY di .env server, lalu jalankan ulang container.');
         setStatus('error');
         return;
       }

@@ -9,6 +9,7 @@ import type { Device, PairingResponse } from '@/lib/types';
 import { DeviceStatusBadge, IssueList, StatusSourceNote, deviceTone } from './status';
 import { useToast } from './toast';
 import { Badge, BoolIndicator, Callout, ConfirmModal, CopyButton, Empty, Field, Modal, Spinner, cx } from './ui';
+import { routes } from '@/lib/routes';
 
 export function TimeWithAge({ at, ageSeconds, empty = 'Belum ada' }: { at: string | null | undefined; ageSeconds?: number | null; empty?: string }) {
   if (!at) return <span className="faint">{empty}</span>;
@@ -23,7 +24,7 @@ export function TimeWithAge({ at, ageSeconds, empty = 'Belum ada' }: { at: strin
 export function DeviceIdentity({ d }: { d: Device }) {
   return (
     <div style={{ minWidth: 150 }}>
-      <Link href={`/devices/${d.id}`} className="strong">{d.device_name}</Link>
+      <Link href={routes.device(d.id)} className="strong">{d.device_name}</Link>
       <div className="row" style={{ gap: 4, marginTop: 3 }}>
         {!d.is_active && <Badge tone="gray" sm>Nonaktif</Badge>}
         {!d.registered && d.pairing_pending && <Badge tone="blue" sm>Menunggu pairing</Badge>}
@@ -96,7 +97,7 @@ export function DeviceTable({ devices, isAdmin, onChanged }: { devices: Device[]
                 <td className="nowrap">{d.app_version ?? <span className="faint">-</span>}</td>
                 <td className="nowrap">
                   <div className="btn-group" style={{ flexWrap: 'nowrap' }}>
-                    <Link href={`/devices/${d.id}`} className="btn xs">Detail</Link>
+                    <Link href={routes.device(d.id)} className="btn xs">Detail</Link>
                     {isAdmin && <button type="button" className="btn xs" onClick={() => setManage(d)}>Kelola</button>}
                   </div>
                 </td>
@@ -117,7 +118,7 @@ export function DeviceCard({ d }: { d: Device }) {
     <section className={cx('card device-card', `accent-${tone}`)}>
       <div className="card-head">
         <div>
-          <Link href={`/devices/${d.id}`}><h2>{d.device_name}</h2></Link>
+          <Link href={routes.device(d.id)}><h2>{d.device_name}</h2></Link>
           <div className="hint">{[d.manufacturer, d.device_model].filter(Boolean).join(' ') || 'Model belum dilaporkan'}{d.app_version ? ` · v${d.app_version}` : ''}</div>
         </div>
         <DeviceStatusBadge status={d.status} />
@@ -156,7 +157,7 @@ export function PairingCodeModal({ result, title, onClose }: { result: PairingRe
         <Callout kind="info" title="Cara mendaftarkan HP Android">
           <ol className="steps">
             <li>Buka aplikasi <b>Android Monitoring</b> di HP yang menerima notifikasi bank.</li>
-            <li>Pastikan alamat server di aplikasi: <code>{config.apiUrl}</code></li>
+            <li>Pastikan alamat server di aplikasi: <code>{config.publicApiUrl}</code></li>
             <li>Pilih <b>Daftarkan perangkat</b>, lalu ketik kode pairing di atas (8 karakter, huruf besar).</li>
             <li>Berikan izin <b>Notification Access</b> dan kecualikan aplikasi dari <b>optimasi baterai</b>.</li>
             <li>Status perangkat di halaman ini akan berubah setelah heartbeat pertama diterima.</li>

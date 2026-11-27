@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { dateTime } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import type { AuditEntry, Paged } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 const ENTITY_TYPES = ['transaction', 'device', 'order', 'bank_source', 'settings', 'user', 'api_client', 'webhook_delivery'];
 const ACTOR_TYPES: Record<string, string> = { user: 'Pengguna', device: 'Perangkat', pos: 'POS', system: 'Sistem' };
@@ -14,9 +15,9 @@ const ACTION_PREFIXES = ['match.', 'transaction.', 'device.', 'bank_source.', 's
 
 function entityHref(type?: string | null, id?: string | null): string | null {
   if (!type || !id) return null;
-  if (type === 'transaction') return `/transactions/${id}`;
-  if (type === 'device') return `/devices/${id}`;
-  if (type === 'order' || type === 'pos_order') return `/orders/${encodeURIComponent(id)}`;
+  if (type === 'transaction') return routes.transaction(id);
+  if (type === 'device') return routes.device(id);
+  if (type === 'order' || type === 'pos_order') return routes.order(id);
   return null;
 }
 

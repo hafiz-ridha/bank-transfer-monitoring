@@ -1,12 +1,12 @@
-name: Backend
+name: Backend + Dashboard image
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['backend/**', 'deploy/**', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'web/**', 'deploy/**', 'Dockerfile', '.dockerignore', '.github/workflows/backend.yml']
   pull_request:
-    paths: ['backend/**', 'deploy/**', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'web/**', 'deploy/**', 'Dockerfile', '.dockerignore', '.github/workflows/backend.yml']
   workflow_dispatch:
 
 permissions:
@@ -29,19 +29,65 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  # Satu image: API + web dashboard. Diuji dulu (smoke test dengan PostgreSQL), baru dipush ke GHCR.
   docker:
     needs: test
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: btm
+          POSTGRES_USER: btm
+          POSTGRES_PASSWORD: btm
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U btm -d btm"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+
+      - name: Build image (lokal untuk smoke test)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: btm:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test container (dashboard + API di satu origin)
+        run: |
+          docker run -d --name btm --network host \
+            -e DATABASE_URL=postgresql://btm:btm@127.0.0.1:5432/btm -e DATABASE_SSL=false -e AUTO_MIGRATE=true \
+            -e DB_DRIVER=pg -e AUTH_MODE=supabase -e JOBS_ENABLED=false \
+            -e SUPABASE_URL=https://example.supabase.co -e SUPABASE_SERVICE_ROLE_KEY=ci-service -e SUPABASE_ANON_KEY=ci-anon \
+            btm:ci
+          for _ in $(seq 1 45); do curl -fsS http://127.0.0.1:4000/readyz >/dev/null 2>&1 && break; sleep 2; done
+          set -x
+          curl -fsS http://127.0.0.1:4000/readyz | grep -q '"ok":true'
+          curl -fsS http://127.0.0.1:4000/ | grep -q '<html'
+          curl -fsS http://127.0.0.1:4000/login | grep -q 'app-config.js'
+          curl -fsS 'http://127.0.0.1:4000/devices/detail?id=x' | grep -q '<html'
+          curl -fsS http://127.0.0.1:4000/app-config.js | grep -q 'ci-anon'
+          ! curl -fsS http://127.0.0.1:4000/app-config.js | grep -q 'ci-service'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/tidak-ada)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/api/v1/me)" = 401
+
+      - name: Log container (bila gagal)
+        if: failure()
+        run: docker logs btm || true
+
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
+        if: github.event_name != 'pull_request'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/bank-transfer-monitoring-backend
@@ -49,11 +95,12 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
             type=semver,pattern={{version}}
-      - uses: docker/build-push-action@v6
+      - if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
         with:
-          context: backend
+          context: .
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max

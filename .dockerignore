@@ -1,0 +1,22 @@
+# Build context = root repo (Dockerfile gabungan backend + dashboard).
+# Hanya backend/ dan web/ yang dibutuhkan; jangan ikutkan rahasia, data lokal, atau hasil build.
+.git
+.github
+.claude
+android
+docs
+ops
+deploy
+*.md
+**/node_modules
+**/.env
+**/.env.*
+**/*.log
+**/logs
+backend/data
+backend/test
+backend/scripts
+backend/ecosystem.config.cjs
+web/.next
+web/out
+web/tsconfig.tsbuildinfo

@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { AuditTimeline } from '@/components/audit';
 import { CandidateStatusBadge, MatchStatusBadge, OrderStatusBadge, PaymentStatusBadge, ScoreBar } from '@/components/status';
 import { useToast } from '@/components/toast';
@@ -13,6 +13,7 @@ import { dateTime, rupiah, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { matchReasonLabel } from '@/lib/labels';
 import type { Candidate, ListResponse, MatchStatus, OrderOption, TransactionDetail } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 const WEBHOOK_WARNING = (
   <>
@@ -35,7 +36,15 @@ const REMATCHABLE: MatchStatus[] = ['PENDING', 'UNMATCHED', 'REJECTED'];
 
 
 export default function TransactionDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <Suspense fallback={<Loading />}>
+      <TransactionDetailView />
+    </Suspense>
+  );
+}
+
+function TransactionDetailView() {
+  const id = useSearchParams().get('id') ?? '';
   const toast = useToast();
   const state = useApi<TransactionDetail>(`/transactions/${id}`);
   const [action, setAction] = useState<Action | null>(null);
@@ -126,7 +135,7 @@ export default function TransactionDetailPage() {
                 <div key={c.id} className={cx('candidate', `state-${c.status}`)}>
                   <div>
                     <div className="row" style={{ gap: 8 }}>
-                      <Link href={`/orders/${c.order_uuid}`} className="strong mono">{c.order_id}</Link>
+                      <Link href={routes.order(c.order_uuid)} className="strong mono">{c.order_id}</Link>
                       <CandidateStatusBadge status={c.status} />
                     </div>
                     <dl className="kv compact mt-1">

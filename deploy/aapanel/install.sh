@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # =====================================================================
-# Installer Backend Bank Transfer Monitor untuk aaPanel (Docker)
+# Installer Bank Transfer Monitor untuk aaPanel (Docker)
+# SATU container berisi API + web dashboard, cukup SATU domain:
+#   https://btm.domainanda.com/          -> dashboard
+#   https://btm.domainanda.com/api/v1/   -> API (Android, POS)
 #
 #   cd /www/dk_project
 #   git clone https://github.com/hafiz-ridha/bank-transfer-monitoring.git
@@ -10,8 +13,8 @@
 #   --reconfigure   tulis ulang .env walau sudah ada
 #   --image         pakai image siap pakai dari GHCR (tanpa build di server)
 # Non-interaktif: set variabel lingkungan yang sama dengan nama di .env sebelum menjalankan
-# (DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BOOTSTRAP_ADMIN_EMAILS, CORS_ORIGINS, ...)
-# dan BTM_NONINTERACTIVE=1.
+# (DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, BOOTSTRAP_ADMIN_EMAILS,
+#  PUBLIC_URL, ...) dan BTM_NONINTERACTIVE=1.
 # =====================================================================
 set -euo pipefail
 
@@ -25,7 +28,7 @@ for arg in "$@"; do
   case "$arg" in
     --reconfigure) RECONFIGURE=1 ;;
     --image) USE_IMAGE=1 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "Opsi tidak dikenal: $arg"; exit 1 ;;
   esac
 done
@@ -50,7 +53,7 @@ else
 fi
 command -v curl >/dev/null 2>&1 || die "curl dibutuhkan (apt install curl / yum install curl)."
 
-if [ -d "$SCRIPT_DIR/../../backend" ] && [ "$USE_IMAGE" = "0" ]; then
+if [ -d "$SCRIPT_DIR/../../backend" ] && [ -d "$SCRIPT_DIR/../../web" ] && [ "$USE_IMAGE" = "0" ]; then
   SOURCE_MODE="build"
 else
   SOURCE_MODE="image"
@@ -84,6 +87,14 @@ ask() {
   printf -v "$var" '%s' "$val"
 }
 
+# URL publik: wajib http(s)://, tanpa path & tanpa "/" di akhir.
+normalize_url() {
+  local u="${1%/}"
+  case "$u" in http://*|https://*) ;; *) die "URL harus diawali https:// (mis. https://btm.domainanda.com)";; esac
+  case "${u#*://}" in */*) die "URL cukup domain saja tanpa path: $u";; esac
+  printf '%s' "$u"
+}
+
 # Nilai .env ditulis dengan kutip tunggal agar karakter khusus tidak diinterpolasi.
 env_line() {
   local key="$1" val="$2"
@@ -95,11 +106,29 @@ port_in_use() {
   if command -v ss >/dev/null 2>&1; then ss -ltn | awk '{print $4}' | grep -qE "[:.]$1\$"; else return 1; fi
 }
 
+read_env() { grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//"; }
+
+ANON_HINT="SUPABASE_ANON_KEY (anon / publishable key — Project Settings > API Keys; BUKAN service role)"
+URL_HINT="URL publik dashboard + API, mis. https://btm.domainanda.com"
+
 # ------------------------------------------------------------------ konfigurasi
 if [ -f "$ENV_FILE" ] && [ "$RECONFIGURE" = "0" ]; then
   info "Memakai konfigurasi yang ada: $ENV_FILE (jalankan dengan --reconfigure untuk mengubah)."
+  # .env dari versi lama (API saja) belum punya nilai untuk dashboard — tanyakan yang kurang saja.
+  if ! grep -qE '^SUPABASE_ANON_KEY=' "$ENV_FILE"; then
+    echo; echo "Dashboard kini ada di container yang sama dan butuh anon key Supabase untuk login."
+    ask SUPABASE_ANON_KEY "$ANON_HINT" ""
+    env_line SUPABASE_ANON_KEY "$SUPABASE_ANON_KEY" >> "$ENV_FILE"
+    info "SUPABASE_ANON_KEY ditambahkan ke $ENV_FILE."
+  fi
+  if ! grep -qE '^DASHBOARD_URL=' "$ENV_FILE"; then
+    ask PUBLIC_URL "$URL_HINT (domain yang di-reverse proxy ke container ini)" "$(read_env CORS_ORIGINS | cut -d, -f1)"
+    PUBLIC_URL="$(normalize_url "$PUBLIC_URL")"
+    env_line DASHBOARD_URL "$PUBLIC_URL" >> "$ENV_FILE"
+    info "DASHBOARD_URL=$PUBLIC_URL ditambahkan ke $ENV_FILE."
+  fi
 else
-  echo -e "\n${c_bold}Konfigurasi Backend Bank Transfer Monitor${c_off}\n"
+  echo -e "\n${c_bold}Konfigurasi Bank Transfer Monitor (API + dashboard)${c_off}\n"
   echo "Database:"
   echo "  1) Supabase PostgreSQL  (disarankan, sesuai PRD)"
   echo "  2) PostgreSQL lokal di container aaPanel"
@@ -113,10 +142,11 @@ else
     ask BTM_DB_PORT "Port PostgreSQL di host (hanya 127.0.0.1, untuk backup)" "5433"
   else
     echo
-    echo "Ambil dari Supabase > Project Settings > Database > Connection string (Session pooler, port 5432)."
+    echo "Ambil dari Supabase > tombol Connect > Session pooler (port 5432)."
     ask DATABASE_URL "DATABASE_URL" "" secret
     case "$DATABASE_URL" in postgres://*|postgresql://*) ;; *) die "DATABASE_URL harus diawali postgresql://";; esac
     case "$DATABASE_URL" in *:6543/*) warn "Port 6543 (transaction pooler) tidak didukung — gunakan session pooler port 5432.";; esac
+    case "$DATABASE_URL" in *'[YOUR-'*) die "Ganti [YOUR-PASSWORD] di DATABASE_URL dengan password database.";; esac
     DATABASE_SSL="true"
     COMPOSE_PROFILES=""
     POSTGRES_PASSWORD=""
@@ -124,12 +154,14 @@ else
   fi
 
   echo
-  echo "Supabase Auth (login dashboard): Project Settings > API."
+  echo "Supabase Auth (login dashboard): Project Settings > API Keys / Data API."
   ask SUPABASE_URL "SUPABASE_URL (https://xxxx.supabase.co)" ""
   ask SUPABASE_SERVICE_ROLE_KEY "SUPABASE_SERVICE_ROLE_KEY (rahasia, tidak ditampilkan)" "" secret
+  ask SUPABASE_ANON_KEY "$ANON_HINT" ""
   ask BOOTSTRAP_ADMIN_EMAILS "Email admin pertama (pisahkan koma)" ""
-  ask CORS_ORIGINS "URL web dashboard (CORS), mis. https://dashboard.domainanda.com" ""
-  ask BTM_PORT "Port backend di host (hanya 127.0.0.1)" "4000"
+  ask PUBLIC_URL "$URL_HINT" ""
+  PUBLIC_URL="$(normalize_url "$PUBLIC_URL")"
+  ask BTM_PORT "Port container di host (hanya 127.0.0.1)" "4000"
   if port_in_use "$BTM_PORT"; then warn "Port $BTM_PORT sedang dipakai proses lain — pilih port lain dengan --reconfigure bila container gagal start."; fi
   TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
   if [ "${BTM_NONINTERACTIVE:-0}" != "1" ]; then
@@ -154,8 +186,13 @@ else
     env_line DB_POOL_MAX "10"
     env_line SUPABASE_URL "$SUPABASE_URL"
     env_line SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+    echo "# Kunci publik untuk login dashboard di browser (aman dibagikan ke browser)."
+    env_line SUPABASE_ANON_KEY "$SUPABASE_ANON_KEY"
     env_line BOOTSTRAP_ADMIN_EMAILS "$BOOTSTRAP_ADMIN_EMAILS"
-    env_line CORS_ORIGINS "$CORS_ORIGINS"
+    echo "# Domain publik (dashboard + API di origin yang sama). Ganti domain: ubah 2 baris ini lalu"
+    echo "#   docker compose up -d --force-recreate backend"
+    env_line DASHBOARD_URL "$PUBLIC_URL"
+    env_line CORS_ORIGINS "$PUBLIC_URL"
     env_line TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
     env_line LOG_LEVEL "info"
     env_line JOBS_ENABLED "true"
@@ -165,14 +202,14 @@ else
 fi
 
 # Baca nilai yang dibutuhkan installer dari .env
-read_env() { grep -E "^$1=" "$ENV_FILE" | tail -n1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//"; }
 BTM_PORT="$(read_env BTM_PORT)"; BTM_PORT="${BTM_PORT:-4000}"
 BTM_IMAGE_VALUE="$(read_env BTM_IMAGE)"
+PUBLIC_URL="$(read_env DASHBOARD_URL)"; PUBLIC_URL="${PUBLIC_URL:-https://btm.domainanda.com}"
 export COMPOSE_PROFILES="$(read_env COMPOSE_PROFILES)"
 
 # ------------------------------------------------------------------ build / pull & start
 if [ "$SOURCE_MODE" = "build" ] && [[ "$BTM_IMAGE_VALUE" == *":local" ]]; then
-  info "Build image backend dari source (../../backend)…"
+  info "Build image (dashboard + backend) dari source… beberapa menit; butuh RAM ±2 GB (bila kurang, tambah swap atau pakai --image)."
   "${COMPOSE[@]}" build backend
 else
   info "Menarik image $BTM_IMAGE_VALUE …"
@@ -185,36 +222,46 @@ fi
 
 info "Menjalankan container…"
 if [ "$SOURCE_MODE" = "build" ]; then
-  "${COMPOSE[@]}" up -d
+  "${COMPOSE[@]}" up -d --remove-orphans
 else
-  "${COMPOSE[@]}" up -d --no-build
+  "${COMPOSE[@]}" up -d --no-build --remove-orphans
 fi
 
-info "Menunggu backend siap (migrasi database berjalan otomatis)…"
+info "Menunggu aplikasi siap (migrasi database berjalan otomatis)…"
 ok=0
 for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:${BTM_PORT}/readyz" >/dev/null 2>&1; then ok=1; break; fi
   sleep 2
 done
 if [ "$ok" != "1" ]; then
-  warn "Backend belum siap dalam 120 detik. Log terakhir:"
+  warn "Aplikasi belum siap dalam 120 detik. Log terakhir:"
   "${COMPOSE[@]}" logs --tail=60 backend || true
   die "Periksa DATABASE_URL / SUPABASE_* di $ENV_FILE lalu jalankan: sudo bash install.sh --reconfigure"
 fi
+if curl -fsS "http://127.0.0.1:${BTM_PORT}/login" 2>/dev/null | grep -q '<html'; then
+  DASH_OK="dashboard OK"
+else
+  DASH_OK="dashboard TIDAK ditemukan di image — build ulang: sudo bash update.sh"
+  warn "$DASH_OK"
+fi
 
 echo
-info "${c_bold}Backend berjalan${c_off}: http://127.0.0.1:${BTM_PORT}  ($(curl -fsS "http://127.0.0.1:${BTM_PORT}/readyz"))"
+info "${c_bold}Bank Transfer Monitor berjalan${c_off}: http://127.0.0.1:${BTM_PORT}  ($(curl -fsS "http://127.0.0.1:${BTM_PORT}/readyz"), ${DASH_OK})"
 cat <<EOF
 
-Langkah berikutnya di aaPanel:
-  1. Website > Add site  -> domain API, mis. api.domainanda.com (PHP: Static / tanpa PHP).
+Langkah berikutnya di aaPanel (cukup SATU website untuk dashboard + API):
+  1. Website > Add site  -> domain ${PUBLIC_URL#*://} (PHP: Static / tanpa PHP).
   2. Buka site tersebut > Reverse proxy > Add reverse proxy
        Target URL : http://127.0.0.1:${BTM_PORT}
        Send domain: \$host
   3. Site > SSL > Let's Encrypt, lalu aktifkan "Force HTTPS".
-  4. Uji: https://api.domainanda.com/readyz  ->  {"ok":true,"db":"pg"}
-  5. Di aplikasi Android isi URL server: https://api.domainanda.com
-  6. Container terlihat di aaPanel > Docker > Containers (btm-backend). Log: docker logs -f btm-backend
+  4. Supabase > Authentication > URL Configuration:
+       Site URL      : ${PUBLIC_URL}
+       Redirect URLs : ${PUBLIC_URL}/reset-password
+  5. Buka ${PUBLIC_URL}  -> halaman login dashboard
+     Uji API: ${PUBLIC_URL}/readyz  ->  {"ok":true,"db":"pg"}
+  6. Di aplikasi Android & sistem POS isi URL server: ${PUBLIC_URL}
+  7. Container terlihat di aaPanel > Docker > Containers (btm-backend). Log: docker logs -f btm-backend
 
 Perintah berguna (dari folder ini):
   ${COMPOSE[*]} ps | logs -f backend | restart backend

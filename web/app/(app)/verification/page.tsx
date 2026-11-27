@@ -7,6 +7,7 @@ import { dateTime, num, rupiah, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { matchReasonLabel } from '@/lib/labels';
 import type { MatchRow, Paged, TransactionList } from '@/lib/types';
+import { routes } from '@/lib/routes';
 
 interface Group {
   transaction_id: string;
@@ -50,7 +51,7 @@ export default function VerificationPage() {
                     <div className="card-head">
                       <div>
                         <div className="row" style={{ gap: 8 }}>
-                          <Link href={`/transactions/${g.transaction_id}`} className="strong">{g.first.transaction_code}</Link>
+                          <Link href={routes.transaction(g.transaction_id)} className="strong">{g.first.transaction_code}</Link>
                           <MatchStatusBadge status={g.first.match_status} />
                           <span className="strong">{rupiah(g.first.amount)}</span>
                         </div>
@@ -59,7 +60,7 @@ export default function VerificationPage() {
                           {' · '}{matchReasonLabel(g.first.match_reason)}
                         </div>
                       </div>
-                      <Link href={`/transactions/${g.transaction_id}`} className="btn primary sm">Periksa &amp; verifikasi →</Link>
+                      <Link href={routes.transaction(g.transaction_id)} className="btn primary sm">Periksa &amp; verifikasi →</Link>
                     </div>
                     <div className="table-wrap">
                       <table className="table compact">
@@ -69,7 +70,7 @@ export default function VerificationPage() {
                         <tbody>
                           {g.candidates.map((c) => (
                             <tr key={c.id}>
-                              <td><Link href={`/orders/${c.order_uuid}`} className="mono small">{c.order_id}</Link></td>
+                              <td><Link href={routes.order(c.order_uuid)} className="mono small">{c.order_id}</Link></td>
                               <td>{c.customer_name ?? '-'}</td>
                               <td className="nowrap num">{dateTime(c.order_created_at, false)}</td>
                               <td className="nowrap num">{c.expires_at ? dateTime(c.expires_at, false) : '-'}</td>
@@ -103,13 +104,13 @@ export default function VerificationPage() {
                     <tbody>
                       {d.data.map((t) => (
                         <tr key={t.id}>
-                          <td><Link href={`/transactions/${t.id}`} className="strong">{t.transaction_code}</Link></td>
+                          <td><Link href={routes.transaction(t.id)} className="strong">{t.transaction_code}</Link></td>
                           <td className="nowrap num">{dateTime(t.received_time)}<div className="sub">{timeAgo(t.received_time)}</div></td>
                           <td>{t.bank_code}<div className="sub">{t.account_alias ?? '-'}</div></td>
                           <td>{t.sender_name ?? '-'}</td>
                           <td className="num strong">{rupiah(t.amount)}</td>
                           <td><MatchStatusBadge status={t.match_status} /><div className="sub">{matchReasonLabel(t.match_reason)}</div></td>
-                          <td><Link href={`/transactions/${t.id}`} className="btn xs">Tindak lanjut</Link></td>
+                          <td><Link href={routes.transaction(t.id)} className="btn xs">Tindak lanjut</Link></td>
                         </tr>
                       ))}
                     </tbody>

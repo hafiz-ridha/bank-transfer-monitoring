@@ -17,11 +17,9 @@ jobs:
     defaults:
       run:
         working-directory: web
+    # Build sama seperti di Dockerfile: tanpa NEXT_PUBLIC_* (konfigurasi dibaca runtime dari /app-config.js).
     env:
-      NEXT_PUBLIC_API_URL: https://api.example.com
-      NEXT_PUBLIC_AUTH_MODE: supabase
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+      NEXT_TELEMETRY_DISABLED: 1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

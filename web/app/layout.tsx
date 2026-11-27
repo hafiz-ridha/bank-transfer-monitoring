@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import './globals.css';
 import { Providers } from '@/components/Providers';
 
@@ -21,6 +22,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="id">
       <body>
         <Providers>{children}</Providers>
+        {/* Konfigurasi runtime (Supabase, mode auth) dari backend — dimuat sebelum hydration. Tidak dipakai saat `next dev`. */}
+        {process.env.NODE_ENV === 'production' && <Script src="/app-config.js" strategy="beforeInteractive" />}
       </body>
     </html>
   );

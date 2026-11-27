@@ -5,16 +5,24 @@ Implementasi MVP dari [PRD v1.1](PRD_Bank_Transfer_Monitoring_System_v1.1.md): d
 ```
 android/   Android Monitoring App — Kotlin, Jetpack Compose, NotificationListenerService, Room, WorkManager
 backend/   Backend API — Node.js, Fastify 5, PostgreSQL (Supabase), matching engine, webhook HMAC, job monitor perangkat
-web/       Web Dashboard — Next.js + React, Supabase Auth
+web/       Web Dashboard — Next.js + React (static export), Supabase Auth; disajikan oleh backend
 docs/      API.md (kontrak API), DEPLOYMENT.md (VPS HestiaCP + PM2), DECISIONS.md (default §19 & keputusan teknis)
-deploy/    aapanel/ — installer backend sebagai container Docker di aaPanel
+deploy/    aapanel/ — installer Docker untuk aaPanel (API + dashboard dalam satu container)
 ops/       backup/ — backup terenkripsi harian + tes restore bulanan
-.github/   workflows — build APK Android & image Docker backend (GHCR) otomatis
+Dockerfile image gabungan backend + dashboard (dipakai installer & GHCR)
+.github/   workflows — build APK Android & image Docker (GHCR) otomatis
 ```
 
 ## Deploy
 
-- **aaPanel (Docker)**: `sudo bash deploy/aapanel/install.sh` — lihat [deploy/aapanel/README.md](deploy/aapanel/README.md).
+Dashboard dan API berjalan di **satu container dan satu domain**:
+
+| URL | Isi |
+|---|---|
+| `https://btm.domainanda.com/` | Dashboard |
+| `https://btm.domainanda.com/api/v1/…` | API untuk Android dan POS |
+
+- **aaPanel (Docker)**: `sudo bash deploy/aapanel/install.sh`. Lihat [deploy/aapanel/README.md](deploy/aapanel/README.md).
 - **HestiaCP / VPS biasa (PM2)**: lihat [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **APK Android**: dibangun GitHub Actions setiap push ke `main` (tab *Actions* > *Android APK* > artifact). Tag `v1.0.0` membuat GitHub Release berisi APK. APK release bertanda tangan dibuat bila secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` diisi.
 

@@ -17,6 +17,7 @@ import posRoutes from './routes/pos.js';
 import dashboardDeviceRoutes from './routes/dashboard-devices.js';
 import dashboardTransactionRoutes from './routes/dashboard-transactions.js';
 import dashboardAdminRoutes from './routes/dashboard-admin.js';
+import { registerDashboard, dashboardNotFound } from './dashboard.js';
 
 /**
  * Membangun aplikasi Fastify. Dependensi dapat diinjeksi untuk pengujian.
@@ -87,7 +88,8 @@ export async function buildApp({ config, db, verifier, fetchImpl, logger }) {
     req.log.error({ err }, 'unhandled error');
     return reply.status(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Terjadi kesalahan pada server' } });
   });
-  app.setNotFoundHandler((req, reply) => reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.url} tidak ada` } }));
+  let dashboardDir = null;
+  app.setNotFoundHandler((req, reply) => dashboardNotFound(dashboardDir, req, reply) ?? reply.status(404).send({ error: { code: 'NOT_FOUND', message: `Route ${req.method} ${req.url} tidak ada` } }));
 
   // ------------------------------------------------------------ routes
   app.get('/healthz', { config: { rateLimit: false } }, async () => ({ ok: true, time: new Date().toISOString() }));
@@ -105,6 +107,10 @@ export async function buildApp({ config, db, verifier, fetchImpl, logger }) {
   await app.register(dashboardDeviceRoutes, { prefix: '/api/v1' });
   await app.register(dashboardTransactionRoutes, { prefix: '/api/v1' });
   await app.register(dashboardAdminRoutes, { prefix: '/api/v1' });
+
+  // Web dashboard (static export) di container yang sama: /, /login, /devices, ... + /app-config.js
+  dashboardDir = await registerDashboard(app, config);
+  if (dashboardDir) app.log.info({ dir: dashboardDir }, 'web dashboard disajikan dari backend');
 
   return app;
 }

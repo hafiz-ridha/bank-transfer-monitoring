@@ -1,4 +1,6 @@
-# Bank Transfer Monitor — backend untuk Docker di aaPanel.
+# Bank Transfer Monitor untuk Docker di aaPanel.
+# SATU container `btm-backend` berisi API + web dashboard (satu domain, satu reverse proxy):
+#   https://domain/           -> dashboard      https://domain/api/v1/... -> API
 # Jangan edit nilai rahasia di sini; semuanya ada di file .env (dibuat oleh install.sh).
 #   Supabase (disarankan):   docker compose up -d
 #   PostgreSQL lokal:        COMPOSE_PROFILES=local-db (diset otomatis oleh install.sh di .env)
@@ -8,7 +10,9 @@ services:
   backend:
     image: ${BTM_IMAGE:-bank-transfer-monitoring-backend:local}
     build:
-      context: ../../backend
+      # Root repo: Dockerfile gabungan membangun dashboard (Next.js static export) + backend.
+      context: ../..
+      dockerfile: Dockerfile
     container_name: btm-backend
     restart: unless-stopped
     env_file: .env

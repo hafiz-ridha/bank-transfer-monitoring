@@ -1,6 +1,6 @@
 'use client';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { AlertList } from '@/components/alerts';
 import { DeviceManageModal, QueueCell, TimeWithAge } from '@/components/devices';
 import { ConnectionBadge, DeviceStatusBadge, IssueList, SeverityBadge, StatusSourceNote } from '@/components/status';
@@ -23,7 +23,15 @@ const SYNC_TYPES = ['SYNC_FAILED', 'SYNC_RECOVERED', 'NETWORK_LOST', 'NETWORK_RE
 const GAP_WARN_SECONDS = 300;
 
 export default function DeviceDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  return (
+    <Suspense fallback={<Loading />}>
+      <DeviceDetail />
+    </Suspense>
+  );
+}
+
+function DeviceDetail() {
+  const id = useSearchParams().get('id') ?? '';
   const { isAdmin } = useAuth();
   const device = useApi<Device>(`/devices/${id}`, undefined, { poll: true });
   const health = useApi<DeviceHealth>(`/devices/${id}/health`, undefined, { poll: true });

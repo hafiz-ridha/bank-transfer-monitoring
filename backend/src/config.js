@@ -1,4 +1,8 @@
 import 'dotenv/config';
+import { fileURLToPath } from 'node:url';
+
+// Lokasi default hasil build dashboard (web/out) relatif terhadap repo; di Docker diset WEB_DIST_DIR=/app/web.
+const DEFAULT_WEB_DIST_DIR = fileURLToPath(new URL('../../web/out', import.meta.url));
 
 function bool(v, def = false) {
   if (v === undefined || v === '') return def;
@@ -36,6 +40,8 @@ export function loadConfig(env = process.env, { validateAuth = true } = {}) {
     authMode: env.AUTH_MODE ?? 'supabase', // 'supabase' | 'dev'
     supabaseUrl: env.SUPABASE_URL,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    // Kunci publik (anon / publishable) untuk login dashboard di browser — BUKAN service role key.
+    supabaseAnonKey: env.SUPABASE_ANON_KEY ?? '',
     bootstrapAdminEmails: list(env.BOOTSTRAP_ADMIN_EMAILS),
 
     telegramBotToken: env.TELEGRAM_BOT_TOKEN ?? '',
@@ -43,6 +49,8 @@ export function loadConfig(env = process.env, { validateAuth = true } = {}) {
     publicBaseUrl: env.PUBLIC_BASE_URL ?? '',
     // URL web dashboard untuk tautan undangan/reset password (default: origin CORS pertama).
     dashboardUrl: (env.DASHBOARD_URL ?? (env.CORS_ORIGINS ?? 'http://localhost:3000').split(',')[0]).trim().replace(/\/$/, ''),
+    // Folder static export dashboard; string kosong = nonaktif (API saja).
+    webDistDir: env.WEB_DIST_DIR ?? DEFAULT_WEB_DIST_DIR,
   };
 
   if (config.env === 'production') {
