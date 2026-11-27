@@ -33,7 +33,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # Android SDK sudah terpasang di runner ubuntu-latest (ANDROID_HOME); AGP mengunduh
+      # platform/build-tools yang kurang secara otomatis (lisensi sudah diterima di image runner).
+      - name: Info Android SDK
+        run: echo "ANDROID_HOME=$ANDROID_HOME" && ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" | tail -n 20
 
       - name: Versi Gradle dari wrapper
         id: gradle
