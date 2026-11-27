@@ -1,0 +1,60 @@
+# Bank Transfer Monitor — backend untuk Docker di aaPanel.
+# Jangan edit nilai rahasia di sini; semuanya ada di file .env (dibuat oleh install.sh).
+#   Supabase (disarankan):   docker compose up -d
+#   PostgreSQL lokal:        COMPOSE_PROFILES=local-db (diset otomatis oleh install.sh di .env)
+name: bank-transfer-monitoring
+
+services:
+  backend:
+    image: ${BTM_IMAGE:-bank-transfer-monitoring-backend:local}
+    build:
+      context: ../../backend
+    container_name: btm-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4000"
+      AUTO_MIGRATE: "true"
+      TRUST_PROXY: "true"
+      DB_DRIVER: pg
+      AUTH_MODE: supabase
+    ports:
+      # Hanya bisa diakses dari server itu sendiri; publik lewat reverse proxy website aaPanel (HTTPS).
+      - "127.0.0.1:${BTM_PORT:-4000}:4000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Opsional: PostgreSQL di container yang sama (aktif bila COMPOSE_PROFILES=local-db).
+  postgres:
+    image: postgres:16-alpine
+    container_name: btm-postgres
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: btm
+      POSTGRES_USER: btm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      TZ: Asia/Jakarta
+    volumes:
+      - btm-pgdata:/var/lib/postgresql/data
+    ports:
+      # Untuk pg_dump dari host (ops/backup/backup.sh); tidak terbuka ke internet.
+      - "127.0.0.1:${BTM_DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U btm -d btm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  btm-pgdata:

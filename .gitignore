@@ -1,0 +1,42 @@
+# Dependencies & build output
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Rahasia & konfigurasi lokal
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+deploy/aapanel/.env
+*.keystore
+*.jks
+*.p12
+keystore.properties
+.claude/
+
+# Data lokal (PGlite), log
+backend/data/
+backend/logs/
+logs/
+*.log
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/.kotlin/
+android/captures/
+*.apk
+*.aab
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
