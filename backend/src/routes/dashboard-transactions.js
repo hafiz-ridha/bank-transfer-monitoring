@@ -1,7 +1,8 @@
 // Dashboard: Incoming Transactions (§5.4), Payment Matching (§5.5), Manual Verification (§5.6), POS Orders (§5.7), Reports (§5.9)
-import { notFound, pageParams, pagination, sortClause, toCsv, badRequest } from '../lib/util.js';
+import { notFound, pageParams, pagination, sortClause, toCsv, badRequest, forbidden } from '../lib/util.js';
 import { transactionFilters, TRANSACTION_SELECT, TRANSACTION_SORTS } from '../services/reports.js';
 import { audit, userActor } from '../services/audit.js';
+import { HIDDEN_SENDERS_KEY, matchingSenderRules, withPosVisibility } from '../lib/posVisibility.js';
 
 const uuidParam = { type: 'object', required: ['id'], properties: { id: { type: 'string', format: 'uuid' } } };
 const noteBody = { type: 'object', properties: { note: { type: ['string', 'null'], maxLength: 1000 } } };
@@ -23,6 +24,19 @@ const listQuery = {
     q: { type: 'string', maxLength: 100 },
     sort: { type: 'string', maxLength: 40 },
     order: { type: 'string', enum: ['asc', 'desc'] },
+    pos_visibility: { type: 'string', enum: ['visible', 'hidden'] },
+  },
+};
+
+const posVisibilityBody = {
+  type: 'object',
+  required: ['hidden'],
+  additionalProperties: false,
+  properties: {
+    hidden: { type: 'boolean' },
+    note: { type: ['string', 'null'], maxLength: 1000 },
+    // Admin: berlakukan juga untuk nama pengirim (tambah/hapus di pengaturan pos_api.hidden_senders).
+    sender_rule: { type: 'boolean' },
   },
 };
 
@@ -36,18 +50,21 @@ export default async function dashboardTransactionRoutes(app) {
     return new Date().toLocaleDateString('sv-SE', { timeZone: tz });
   }
 
+  const hiddenSenders = async () => (await settings.get(HIDDEN_SENDERS_KEY)) ?? [];
+
   async function queryTransactions(q, limitSql) {
     const tz = await settings.get('general.timezone');
-    const f = transactionFilters(q, tz);
+    const senders = await hiddenSenders();
+    const f = transactionFilters(q, tz, { hiddenSenders: senders });
     const order = sortClause(q, TRANSACTION_SORTS, 'received_time');
     const rows = await db.many(`${TRANSACTION_SELECT} ${f.sql} ORDER BY ${order} ${limitSql}`, f.params);
-    return { rows, f };
+    return { rows: rows.map((r) => withPosVisibility(r, senders)), f };
   }
 
   app.get('/transactions', { ...anyUser, schema: { querystring: listQuery } }, async (req) => {
     const { page, pageSize, offset } = pageParams(req.query);
     const tz = await settings.get('general.timezone');
-    const f = transactionFilters(req.query, tz);
+    const f = transactionFilters(req.query, tz, { hiddenSenders: await hiddenSenders() });
     const totals = await db.one(
       `SELECT count(*) AS n, COALESCE(sum(t.amount),0)::bigint AS amount FROM incoming_transactions t LEFT JOIN pos_orders o ON o.id = t.matched_order_id ${f.sql}`,
       f.params,
@@ -72,6 +89,7 @@ export default async function dashboardTransactionRoutes(app) {
       { label: 'Status Matching', key: 'match_status' },
       { label: 'POS Order ID', key: 'pos_order_id' },
       { label: 'Skor', key: 'match_score' },
+      { label: 'Tampil di API POS', value: (r) => (r.pos_visible ? 'Ya' : r.pos_hidden ? 'Tidak (disembunyikan manual)' : 'Tidak (aturan pengirim)') },
       { label: 'Catatan', key: 'note' },
     ], rows);
     const name = `transaksi_${req.query.date_from ?? 'awal'}_${req.query.date_to ?? 'akhir'}.csv`;
@@ -79,8 +97,9 @@ export default async function dashboardTransactionRoutes(app) {
   });
 
   app.get('/transactions/:id', { ...anyUser, schema: { params: uuidParam } }, async (req) => {
-    const t = await db.one(`${TRANSACTION_SELECT} WHERE t.id = $1`, [req.params.id]);
-    if (!t) throw notFound('Transaksi tidak ditemukan');
+    const row = await db.one(`${TRANSACTION_SELECT} WHERE t.id = $1`, [req.params.id]);
+    if (!row) throw notFound('Transaksi tidak ditemukan');
+    const t = withPosVisibility(row, await hiddenSenders());
     const candidates = await db.many(
       `SELECT pm.id, pm.status, pm.score, pm.score_breakdown, pm.reasons, pm.note, pm.decided_at, u.email AS decided_by_email,
          o.id AS order_uuid, o.order_id, o.customer_name, o.amount, o.order_created_at, o.expires_at, o.status AS order_status, o.payment_status
@@ -145,6 +164,57 @@ export default async function dashboardTransactionRoutes(app) {
       return r;
     });
     return row;
+  });
+
+  /**
+   * Sembunyikan / tampilkan lagi transaksi di API POS (GET /pos/transactions & POST /pos/orders/:id/match).
+   * Tidak memengaruhi dashboard maupun pencocokan otomatis. `sender_rule` (admin): ikut menambah nama
+   * pengirim ke pengaturan pos_api.hidden_senders, atau menghapus aturan pengirim yang menyembunyikannya.
+   */
+  app.post('/transactions/:id/pos-visibility', { ...anyUser, schema: { params: uuidParam, body: posVisibilityBody } }, async (req) => {
+    const { hidden, note = null, sender_rule: senderRule = false } = req.body;
+    if (senderRule && req.user.role !== 'admin') throw forbidden('Hanya admin yang dapat mengubah aturan nama pengirim');
+    const rulesBefore = await hiddenSenders();
+    let rulesChanged = false;
+    const row = await db.tx(async (tx) => {
+      const cur = await tx.one('SELECT id, transaction_code, sender_name, pos_hidden FROM incoming_transactions WHERE id = $1 FOR UPDATE', [req.params.id]);
+      if (!cur) throw notFound('Transaksi tidak ditemukan');
+      let rules = rulesBefore;
+      if (senderRule) {
+        const sender = String(cur.sender_name ?? '').trim().replace(/\s+/g, ' ');
+        if (!sender) throw badRequest('Transaksi ini tidak memiliki nama pengirim');
+        const matched = matchingSenderRules(sender, rulesBefore);
+        rules = hidden
+          ? (matched.length ? rulesBefore : [...rulesBefore, sender])
+          : rulesBefore.filter((n) => !matched.includes(n));
+        if (rules.length !== rulesBefore.length) {
+          await settings.set(HIDDEN_SENDERS_KEY, rules, req.user.id, tx);
+          await audit(tx, {
+            actor: userActor(req.user), action: 'settings.update', entityType: 'settings',
+            before: { [HIDDEN_SENDERS_KEY]: rulesBefore }, after: { [HIDDEN_SENDERS_KEY]: rules }, note, req,
+          });
+          rulesChanged = true;
+        }
+      }
+      const updated = cur.pos_hidden === hidden ? cur : await tx.one(
+        `UPDATE incoming_transactions SET pos_hidden = $2, pos_hidden_at = CASE WHEN $2 THEN now() ELSE NULL END, updated_at = now()
+         WHERE id = $1 RETURNING id, transaction_code, sender_name, pos_hidden`,
+        [cur.id, hidden],
+      );
+      if (cur.pos_hidden !== hidden || rulesChanged) {
+        await audit(tx, {
+          actor: userActor(req.user), action: hidden ? 'transaction.pos_hide' : 'transaction.pos_show',
+          entityType: 'transaction', entityId: cur.id,
+          before: { pos_hidden: cur.pos_hidden },
+          after: { pos_hidden: hidden, ...(rulesChanged ? { hidden_senders: rules } : {}) },
+          note, req,
+        });
+      }
+      return { ...updated, rules };
+    });
+    if (rulesChanged) settings.invalidate();
+    const { rules, ...t } = row;
+    return withPosVisibility(t, rules);
   });
 
   // ---------------------------------------------------------------- matches

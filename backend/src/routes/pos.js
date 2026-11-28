@@ -2,6 +2,7 @@
 import { HttpError, notFound, pageParams, pagination } from '../lib/util.js';
 import { transactionFilters } from '../services/reports.js';
 import { posActor } from '../services/audit.js';
+import { HIDDEN_SENDERS_KEY, isHiddenSender } from '../lib/posVisibility.js';
 
 const dateRe = '^\\d{4}-\\d{2}-\\d{2}$';
 
@@ -64,18 +65,10 @@ const posDevice = (d) => ({
   registered: d.registered,
 });
 
-/** Pola ILIKE untuk pengirim yang disembunyikan dari API POS ("mengandung", tanpa beda besar/kecil). */
-const hiddenSenderPatterns = (names) => names.map((n) => `%${String(n).replace(/[\\%_]/g, '\\$&')}%`);
-/** Sama dengan filter SQL di atas, untuk satu nama pengirim. */
-const isHiddenSender = (sender, names) => {
-  const s = String(sender ?? '').toLowerCase();
-  return !!s && names.some((n) => s.includes(String(n).toLowerCase()));
-};
-
 export default async function posRoutes(app) {
   const { db, orders, matching, settings, devices } = app.services;
   const auth = { preHandler: app.requirePos };
-  const hiddenSenders = async () => (await settings.get('pos_api.hidden_senders')) ?? [];
+  const hiddenSenders = async () => (await settings.get(HIDDEN_SENDERS_KEY)) ?? [];
 
   app.post('/orders', {
     ...auth,
@@ -126,9 +119,9 @@ export default async function posRoutes(app) {
     },
   }, async (req) => {
     const orderId = req.params.order_id;
-    const trx = await db.one('SELECT id, sender_name FROM incoming_transactions WHERE transaction_code = $1', [req.body.transaction_id]);
-    // Transaksi yang disembunyikan dari API POS diperlakukan seperti tidak ada.
-    if (!trx || isHiddenSender(trx.sender_name, await hiddenSenders())) throw notFound('Transaksi tidak ditemukan');
+    const trx = await db.one('SELECT id, sender_name, pos_hidden FROM incoming_transactions WHERE transaction_code = $1', [req.body.transaction_id]);
+    // Transaksi yang disembunyikan dari API POS (manual atau aturan pengirim) diperlakukan seperti tidak ada.
+    if (!trx || trx.pos_hidden || isHiddenSender(trx.sender_name, await hiddenSenders())) throw notFound('Transaksi tidak ditemukan');
     try {
       await matching.assign(trx.id, orderId, null, req.body.note ?? null, req, {
         actor: posActor(req.apiClient),
@@ -168,23 +161,20 @@ export default async function posRoutes(app) {
 
   /**
    * Daftar transaksi masuk (baca saja) untuk POS: filter tanggal/status/nominal, paginasi.
-   * Transaksi dari pengirim di pengaturan `pos_api.hidden_senders` tidak ditampilkan.
+   * Tidak ditampilkan: transaksi yang disembunyikan dari dashboard ("Sembunyikan dari API POS")
+   * dan transaksi dari pengirim di pengaturan `pos_api.hidden_senders`.
    */
   app.get('/transactions', { ...auth, schema: { querystring: transactionsQuery } }, async (req) => {
     const q = req.query;
     const { page, pageSize, offset } = pageParams(q, { defaultSize: 50 });
     const tz = await settings.get('general.timezone');
-    const f = transactionFilters(q, tz);
+    // Selalu hanya transaksi yang tampil di API POS (bukan parameter yang bisa diubah POS).
+    const f = transactionFilters({ ...q, pos_visibility: 'visible' }, tz, { hiddenSenders: await hiddenSenders() });
     const params = [...f.params];
     const where = f.sql ? [f.sql.replace(/^WHERE /, '')] : [];
     if (q.since) {
       params.push(q.since);
       where.push(`t.created_at > $${params.length}::timestamptz`);
-    }
-    const hidden = await hiddenSenders();
-    if (hidden.length) {
-      params.push(hiddenSenderPatterns(hidden));
-      where.push(`NOT (COALESCE(t.sender_name, '') ILIKE ANY($${params.length}::text[]))`);
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const dir = q.order === 'asc' ? 'ASC' : 'DESC';

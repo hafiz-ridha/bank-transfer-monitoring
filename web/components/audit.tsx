@@ -11,6 +11,8 @@ export const AUDIT_ACTION: Record<string, string> = {
   'transaction.ignore': 'Transaksi diabaikan',
   'transaction.reopen': 'Dibuka kembali',
   'transaction.note': 'Catatan diubah',
+  'transaction.pos_hide': 'Disembunyikan dari API POS',
+  'transaction.pos_show': 'Ditampilkan lagi di API POS',
   'device.create': 'Perangkat dibuat',
   'device.register': 'Perangkat terdaftar',
   'device.update': 'Perangkat diubah',

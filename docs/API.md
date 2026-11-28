@@ -188,7 +188,7 @@ Boolean kondisi bisa `null` (belum dilaporkan).
 | `GET /devices/:id/app-versions` | semua | `{ data: [{ app_version, first_seen_at, last_seen_at, heartbeats }] }` |
 | `GET /alerts?status=active|all|OPEN|ACKNOWLEDGED|RESOLVED&device_id=` | semua | `{ data: [Alert] }` (default `active` = belum resolved, `all` = semua) |
 | `POST /alerts/:id/acknowledge` | semua | Alert |
-| `GET /transactions` | semua | filter: `date_from`, `date_to` (YYYY-MM-DD, zona waktu operasional), `bank_code`, `bank_source_id`, `amount`, `amount_min`, `amount_max`, `status` (koma: `MATCHED,MANUAL_VERIFIED`), `q` (nama/referensi/TRX/order/alias), `sort` = `received_time|transaction_time|amount|sender_name|bank_code|match_status`; respons berhalaman + `totals: { count, amount }` |
+| `GET /transactions` | semua | filter: `date_from`, `date_to` (YYYY-MM-DD, zona waktu operasional), `bank_code`, `bank_source_id`, `amount`, `amount_min`, `amount_max`, `status` (koma: `MATCHED,MANUAL_VERIFIED`), `q` (nama/referensi/TRX/order/alias), `sort` = `received_time|transaction_time|amount|sender_name|bank_code|match_status`, `pos_visibility` = `visible|hidden` (tampil / disembunyikan di API POS); respons berhalaman + `totals: { count, amount }`. Tiap baris juga berisi `pos_hidden` (disembunyikan manual), `pos_hidden_at`, `pos_hidden_rules` (aturan nama pengirim yang cocok), `pos_visible` |
 | `GET /transactions/export.csv` | semua | filter sama, file CSV |
 | `GET /transactions/:id` | semua | `{ transaction, candidates: [Candidate], notification: {...}|null, audit: [{ id, actor_type, actor_label, action, note, after, created_at }] }` |
 | `GET /transactions/:id/order-options` | semua | order UNPAID nominal sama (PENDING/EXPIRED), untuk tautkan manual |
@@ -197,6 +197,7 @@ Boolean kondisi bisa `null` (belum dilaporkan).
 | `POST /transactions/:id/reopen` `{note?}` | semua | IGNORED/REJECTED → dicocokkan ulang |
 | `POST /transactions/:id/rematch` | semua | jalankan matching ulang |
 | `POST /transactions/:id/notes` `{note}` | semua | catatan |
+| `POST /transactions/:id/pos-visibility` `{hidden, note?, sender_rule?}` | semua (`sender_rule`: admin) | sembunyikan (`hidden: true`) / tampilkan lagi transaksi di API POS. `sender_rule: true` ikut menambah nama pengirim ke `pos_api.hidden_senders` (saat menyembunyikan) atau menghapus aturan pengirim yang cocok (saat menampilkan). Tidak memengaruhi dashboard & pencocokan otomatis. Respons `{ id, transaction_code, sender_name, pos_hidden, pos_hidden_rules, pos_visible }`; audit `transaction.pos_hide` / `transaction.pos_show` |
 | `GET /matches?status=CANDIDATE&transaction_status=AMBIGUOUS` | semua | antrean verifikasi; baris `{ id, status, score, score_breakdown, reasons, note, created_at, decided_at, transaction_id, transaction_code, sender_name, amount, bank_code, account_alias, transaction_time, received_time, match_status, match_reason, order_uuid, order_id, customer_name, order_created_at, expires_at, order_status }` |
 | `POST /matches/:id/verify` `{note?}` | semua | pilih kandidat → `MANUAL_VERIFIED` + webhook |
 | `POST /matches/:id/reject` `{note?}` | semua | tolak kandidat |
@@ -299,7 +300,11 @@ Query (semua opsional):
 
 - `order_id` diisi bila transaksi sudah tertaut ke order (`MATCHED` / `MANUAL_VERIFIED`).
 - Polling: simpan `recorded_at` terbesar yang sudah diproses, lalu panggil `?since=<nilai itu>&order=asc`.
-- Transaksi dari pengirim di **Pengaturan → API POS** (`pos_api.hidden_senders`) **tidak ditampilkan** dan tidak bisa ditautkan lewat API POS. Transaksi itu tetap tampil di dashboard.
+- **Tidak ditampilkan** (dan tidak bisa ditautkan lewat API POS):
+  - transaksi yang disembunyikan dari dashboard: menu **Transaksi masuk** → tombol **🙈 Sembunyikan** (atau **Sembunyikan dari API POS** di halaman detail);
+  - transaksi dari pengirim di **Pengaturan → API POS** (`pos_api.hidden_senders`).
+
+  Transaksi itu tetap tampil di dashboard (filter **API POS: Disembunyikan**) dan tetap ikut pencocokan otomatis.
 
 ### GET /pos/devices → status perangkat monitoring (baca saja)
 

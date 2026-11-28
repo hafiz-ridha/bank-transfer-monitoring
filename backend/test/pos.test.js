@@ -220,3 +220,68 @@ test('GET /pos/devices: status perangkat monitoring untuk POS tanpa data interna
   assert.equal(r3.body.summary.total, 1);
   assert.ok(!r3.body.data.some((d) => d.id === pending.body.device.id));
 });
+
+test('dashboard: Sembunyikan dari API POS per transaksi & per nama pengirim', async () => {
+  const u = await h.call('POST', '/api/v1/users', { headers: h.admin, body: { email: 'op-hide@test.local', role: 'operator' } });
+  assert.equal(u.status, 201, JSON.stringify(u.body));
+  const op = { authorization: 'Bearer dev:op-hide@test.local' };
+  const idOf = async (code) => (await h.db.one('SELECT id FROM incoming_transactions WHERE transaction_code = $1', [code])).id;
+  const posCodes = async () => (await h.call('GET', '/api/v1/pos/transactions?amount=930000', { headers: pos })).body.data.map((r) => r.transaction_id);
+  const vis = (id, body, headers = op) => h.call('POST', `/api/v1/transactions/${id}/pos-visibility`, { headers, body });
+
+  const a = await incoming(930000, 'REF-PH-1', 'ANDI WIJAYA');
+  const b = await incoming(930000, 'REF-PH-2', 'TOKO SEBELAH JAYA');
+  const c = await incoming(930000, 'REF-PH-3', 'toko sebelah jaya');
+  const [ida, idb, idc] = await Promise.all([a, b, c].map((t) => idOf(t.transaction_code)));
+  assert.deepEqual((await posCodes()).sort(), [a, b, c].map((t) => t.transaction_code).sort());
+
+  // Operator menyembunyikan satu transaksi (idempoten, tercatat sekali di audit).
+  const hide = await vis(ida, { hidden: true, note: 'transfer pribadi' });
+  assert.equal(hide.status, 200, JSON.stringify(hide.body));
+  assert.equal(hide.body.pos_hidden, true);
+  assert.equal(hide.body.pos_visible, false);
+  assert.equal((await vis(ida, { hidden: true })).status, 200);
+  assert.ok(!(await posCodes()).includes(a.transaction_code));
+  const detail = await h.call('GET', `/api/v1/transactions/${ida}`, { headers: op });
+  assert.equal(detail.body.transaction.pos_hidden, true);
+  assert.equal(detail.body.transaction.pos_visible, false);
+  assert.deepEqual(detail.body.audit.filter((x) => x.action === 'transaction.pos_hide').map((x) => x.note), ['transfer pribadi']);
+
+  // POS tidak bisa menautkan transaksi yang disembunyikan; dashboard tetap menampilkan & bisa memfilter.
+  const order = newOrder(930000);
+  await h.call('POST', '/api/v1/pos/orders', { headers: pos, body: order });
+  assert.equal((await h.call('POST', `/api/v1/pos/orders/${order.order_id}/match`, { headers: pos, body: { transaction_id: a.transaction_code } })).status, 404);
+  const dashHidden = await h.call('GET', '/api/v1/transactions?amount=930000&pos_visibility=hidden', { headers: op });
+  assert.deepEqual(dashHidden.body.data.map((r) => r.transaction_code), [a.transaction_code]);
+  const dashVisible = await h.call('GET', '/api/v1/transactions?amount=930000&pos_visibility=visible', { headers: op });
+  assert.equal(dashVisible.body.pagination.total, 2);
+  assert.equal((await h.call('GET', '/api/v1/transactions?pos_visibility=salah', { headers: op })).status, 400);
+
+  // Aturan nama pengirim hanya untuk admin.
+  assert.equal((await vis(idb, { hidden: true, sender_rule: true })).status, 403);
+  const rule = await vis(idb, { hidden: true, sender_rule: true }, h.admin);
+  assert.equal(rule.status, 200, JSON.stringify(rule.body));
+  assert.deepEqual(rule.body.pos_hidden_rules, ['TOKO SEBELAH JAYA']);
+  const settingsRes = await h.call('GET', '/api/v1/settings', { headers: h.admin });
+  assert.deepEqual(settingsRes.body.data.find((s) => s.key === 'pos_api.hidden_senders').value, ['TOKO SEBELAH JAYA']);
+  // Transaksi lain dari pengirim yang sama (beda huruf besar/kecil) ikut tersembunyi.
+  assert.deepEqual(await posCodes(), []);
+  const cRow = (await h.call('GET', `/api/v1/transactions/${idc}`, { headers: op })).body.transaction;
+  assert.equal(cRow.pos_hidden, false);
+  assert.deepEqual(cRow.pos_hidden_rules, ['TOKO SEBELAH JAYA']);
+  assert.equal(cRow.pos_visible, false);
+
+  // Menampilkan tanpa sender_rule tidak menghapus aturan; dengan sender_rule (admin) aturan dihapus.
+  const stillHidden = await vis(idc, { hidden: false });
+  assert.equal(stillHidden.body.pos_visible, false);
+  const show = await vis(idc, { hidden: false, sender_rule: true }, h.admin);
+  assert.equal(show.status, 200);
+  assert.equal(show.body.pos_visible, true);
+  assert.deepEqual((await posCodes()).sort(), [c.transaction_code], 'b masih disembunyikan manual');
+  assert.equal((await vis(idb, { hidden: false })).body.pos_visible, true);
+  assert.equal((await vis(ida, { hidden: false })).body.pos_visible, true);
+  assert.equal((await posCodes()).length, 3);
+
+  assert.equal((await vis('00000000-0000-4000-8000-000000000000', { hidden: true })).status, 404);
+  assert.equal((await vis(ida, { hidden: 'ya' })).status, 400);
+});

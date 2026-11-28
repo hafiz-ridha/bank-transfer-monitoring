@@ -1,7 +1,8 @@
 // Ringkasan dashboard (PRD §5.1), transaksi (§5.4), dan laporan (§5.9).
+import { posVisibilitySql } from '../lib/posVisibility.js';
 
 /** Membangun WHERE untuk daftar transaksi (dipakai list & export CSV). */
-export function transactionFilters(q, tz) {
+export function transactionFilters(q, tz, { hiddenSenders = [] } = {}) {
   const where = [];
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
@@ -20,6 +21,9 @@ export function transactionFilters(q, tz) {
     const like = p(`%${q.q}%`);
     where.push(`(t.sender_name ILIKE ${like} OR t.reference_number ILIKE ${like} OR t.transaction_code ILIKE ${like} OR o.order_id ILIKE ${like} OR t.account_alias ILIKE ${like})`);
   }
+  // Tampil / disembunyikan di API POS (manual per transaksi atau aturan pengirim).
+  const pos = posVisibilitySql(q.pos_visibility, hiddenSenders, p);
+  if (pos) where.push(pos);
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
 }
 
@@ -35,7 +39,7 @@ export const TRANSACTION_SORTS = {
 export const TRANSACTION_SELECT = `
   SELECT t.id, t.transaction_code, t.bank_code, t.account_alias, t.bank_source_id, t.sender_name, t.amount,
          t.transaction_time, t.received_time, t.reference_number, t.recipient_account, t.notification_type, t.parser_version,
-         t.match_status, t.match_reason, t.match_score, t.matched_at, t.note, t.created_at,
+         t.match_status, t.match_reason, t.match_score, t.matched_at, t.note, t.created_at, t.pos_hidden, t.pos_hidden_at,
          o.order_id AS pos_order_id, o.customer_name AS pos_customer_name,
          (SELECT count(*) FROM payment_matches pm WHERE pm.transaction_id = t.id AND pm.status = 'CANDIDATE') AS candidate_count
   FROM incoming_transactions t

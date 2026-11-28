@@ -218,6 +218,22 @@ export interface Transaction {
   pos_order_id: string | null;
   pos_customer_name: string | null;
   candidate_count: number;
+  /** Disembunyikan manual dari API POS. */
+  pos_hidden: boolean;
+  pos_hidden_at: ISODate | null;
+  /** Aturan nama pengirim (pengaturan pos_api.hidden_senders) yang menyembunyikan transaksi ini. */
+  pos_hidden_rules: string[];
+  /** Tampil di GET /api/v1/pos/transactions. */
+  pos_visible: boolean;
+}
+
+export interface PosVisibilityResult {
+  id: string;
+  transaction_code: string;
+  sender_name: string | null;
+  pos_hidden: boolean;
+  pos_hidden_rules: string[];
+  pos_visible: boolean;
 }
 
 export interface TransactionList extends Paged<Transaction> {

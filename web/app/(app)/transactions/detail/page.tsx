@@ -3,12 +3,14 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { AuditTimeline } from '@/components/audit';
+import { PosVisibilityBadge, PosVisibilityModal, posVisibilityMessage } from '@/components/pos-visibility';
 import { CandidateStatusBadge, MatchStatusBadge, OrderStatusBadge, PaymentStatusBadge, ScoreBar } from '@/components/status';
 import { useToast } from '@/components/toast';
 import {
   Badge, Callout, Card, ConfirmModal, DataState, Empty, ErrorBox, JsonView, Loading, PageHeader, cx,
 } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { dateTime, rupiah, timeAgo } from '@/lib/format';
 import { useApi } from '@/lib/hooks';
 import { matchReasonLabel } from '@/lib/labels';
@@ -29,7 +31,8 @@ type Action =
   | { kind: 'ignore' }
   | { kind: 'reopen' }
   | { kind: 'rematch' }
-  | { kind: 'note' };
+  | { kind: 'note' }
+  | { kind: 'pos-visibility' };
 
 const FINAL: MatchStatus[] = ['MATCHED', 'MANUAL_VERIFIED'];
 const REMATCHABLE: MatchStatus[] = ['PENDING', 'UNMATCHED', 'REJECTED'];
@@ -46,6 +49,7 @@ export default function TransactionDetailPage() {
 function TransactionDetailView() {
   const id = useSearchParams().get('id') ?? '';
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const state = useApi<TransactionDetail>(`/transactions/${id}`);
   const [action, setAction] = useState<Action | null>(null);
 
@@ -91,6 +95,13 @@ function TransactionDetailView() {
           </Callout>
         )}
         {t.match_status === 'IGNORED' && <Callout kind="info" title="Transaksi diabaikan">Transaksi ini tidak dipakai untuk pencocokan. Gunakan “Buka kembali” bila perlu dicocokkan lagi.</Callout>}
+        {!t.pos_visible && (
+          <Callout kind="info" title="Disembunyikan dari API POS">
+            Transaksi ini tidak muncul di daftar transaksi API POS dan tidak bisa ditautkan dari POS
+            {t.pos_hidden && t.pos_hidden_at && <> · disembunyikan manual pada {dateTime(t.pos_hidden_at)}</>}
+            {t.pos_hidden_rules.length > 0 && <> · cocok dengan aturan nama pengirim {t.pos_hidden_rules.map((r) => `“${r}”`).join(', ')} (Pengaturan → API POS)</>}.
+          </Callout>
+        )}
 
         <div className="grid grid-3">
           <Card title="Detail transfer" className="span-2">
@@ -106,6 +117,7 @@ function TransactionDetailView() {
               <dt>Versi parser</dt><dd>{t.parser_version ?? '-'}</dd>
               <dt>POS Order ID</dt><dd>{t.pos_order_id ? <span className="mono">{t.pos_order_id}</span> : '-'}</dd>
               <dt>Dicocokkan pada</dt><dd>{dateTime(t.matched_at)}</dd>
+              <dt>API POS</dt><dd><PosVisibilityBadge t={t} /></dd>
               <dt>Catatan</dt><dd>{t.note ? <span style={{ whiteSpace: 'pre-wrap' }}>{t.note}</span> : <span className="faint">Belum ada catatan</span>}</dd>
             </dl>
           </Card>
@@ -117,6 +129,9 @@ function TransactionDetailView() {
               <button type="button" className="btn danger-outline" disabled={!canDecide} onClick={() => setAction({ kind: 'ignore' })}>🚫 Abaikan transaksi</button>
               <button type="button" className="btn" disabled={!['IGNORED', 'REJECTED'].includes(t.match_status)} onClick={() => setAction({ kind: 'reopen' })}>↩ Buka kembali</button>
               <button type="button" className="btn" onClick={() => setAction({ kind: 'note' })}>📝 {t.note ? 'Ubah catatan' : 'Tambah catatan'}</button>
+              <button type="button" className="btn" onClick={() => setAction({ kind: 'pos-visibility' })}>
+                {t.pos_visible ? '🙈 Sembunyikan dari API POS' : '👁 Tampilkan di API POS'}
+              </button>
               {isFinal && <div className="small muted">Transaksi sudah dipakai untuk pembayaran order sehingga tidak dapat diubah.</div>}
             </div>
           </Card>
@@ -286,6 +301,19 @@ function TransactionDetailView() {
           onConfirm={async (note) => {
             await api.post(`/transactions/${t.id}/notes`, { note });
             await done('Catatan disimpan');
+          }}
+        />
+      )}
+      {action?.kind === 'pos-visibility' && (
+        <PosVisibilityModal
+          t={t}
+          isAdmin={isAdmin}
+          onClose={() => setAction(null)}
+          onDone={async (r) => {
+            const m = posVisibilityMessage(r);
+            if (m.ok) toast.success(m.msg);
+            else toast.info(m.msg);
+            await state.reload();
           }}
         />
       )}

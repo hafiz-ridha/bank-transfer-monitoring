@@ -2,15 +2,24 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { PosVisibilityBadge, PosVisibilityModal, posVisibilityMessage } from '@/components/pos-visibility';
 import { MatchStatusBadge } from '@/components/status';
 import { useToast } from '@/components/toast';
 import { Card, DataState, PageHeader, Pagination, SortHeader, Spinner, cx } from '@/components/ui';
 import { api, errorMessage, qs, type Query } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { firstOfMonthYmd, num, parseIntInput, rupiah, timeSmart, dateTime, todayYmd } from '@/lib/format';
 import { useApi, useInitialQuery } from '@/lib/hooks';
 import { MATCH_STATUS, MATCH_STATUS_ORDER, matchReasonLabel } from '@/lib/labels';
-import type { BankSource, ListResponse, MatchStatus, TransactionList } from '@/lib/types';
+import type { BankSource, ListResponse, MatchStatus, Transaction, TransactionList } from '@/lib/types';
 import { routes } from '@/lib/routes';
+
+type PosVisibilityFilter = '' | 'visible' | 'hidden';
+const POS_VISIBILITY: { value: PosVisibilityFilter; label: string }[] = [
+  { value: '', label: 'Semua' },
+  { value: 'visible', label: 'Tampil' },
+  { value: 'hidden', label: 'Disembunyikan' },
+];
 
 interface Filters {
   date_from: string;
@@ -21,9 +30,10 @@ interface Filters {
   amount_max: string;
   status: MatchStatus[];
   q: string;
+  pos_visibility: PosVisibilityFilter;
 }
 
-const EMPTY: Filters = { date_from: '', date_to: '', bank_code: '', bank_source_id: '', amount_min: '', amount_max: '', status: [], q: '' };
+const EMPTY: Filters = { date_from: '', date_to: '', bank_code: '', bank_source_id: '', amount_min: '', amount_max: '', status: [], q: '', pos_visibility: '' };
 
 function fromUrl(p: URLSearchParams): Filters {
   return {
@@ -35,6 +45,7 @@ function fromUrl(p: URLSearchParams): Filters {
     amount_max: p.get('amount_max') ?? '',
     status: (p.get('status') ?? '').split(',').map((s) => s.trim().toUpperCase()).filter((s): s is MatchStatus => s in MATCH_STATUS),
     q: p.get('q') ?? '',
+    pos_visibility: (['visible', 'hidden'] as const).find((v) => v === p.get('pos_visibility')) ?? '',
   };
 }
 
@@ -48,13 +59,16 @@ function toQuery(f: Filters): Query {
     amount_max: parseIntInput(f.amount_max),
     status: f.status.length ? f.status : undefined,
     q: f.q.trim() || undefined,
+    pos_visibility: f.pos_visibility || undefined,
   };
 }
 
 export default function TransactionsPage() {
   const router = useRouter();
   const toast = useToast();
+  const { isAdmin } = useAuth();
   const initial = useInitialQuery();
+  const [visTarget, setVisTarget] = useState<Transaction | null>(null);
   const [draft, setDraft] = useState<Filters>(() => fromUrl(initial));
   const [applied, setApplied] = useState<Filters>(() => fromUrl(initial));
   const [page, setPage] = useState(() => Number(initial.get('page') ?? 1) || 1);
@@ -89,6 +103,12 @@ export default function TransactionsPage() {
   };
   const preset = (from: string, to: string) => {
     const next = { ...draft, date_from: from, date_to: to };
+    setDraft(next);
+    setApplied(next);
+    setPage(1);
+  };
+  const setPosVisibility = (v: PosVisibilityFilter) => {
+    const next = { ...draft, pos_visibility: v };
     setDraft(next);
     setApplied(next);
     setPage(1);
@@ -188,6 +208,16 @@ export default function TransactionsPage() {
             </div>
           </div>
           <div className="row" style={{ gap: 6 }}>
+            <span className="label" style={{ marginRight: 4 }}>API POS:</span>
+            <div className="chips">
+              {POS_VISIBILITY.map((o) => (
+                <button key={o.value || 'all'} type="button" className={cx('chip', draft.pos_visibility === o.value && 'on')} onClick={() => setPosVisibility(o.value)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="row" style={{ gap: 6 }}>
             <span className="label" style={{ marginRight: 4 }}>Periode cepat:</span>
             <button type="button" className="chip" onClick={() => preset(todayYmd(), todayYmd())}>Hari ini</button>
             <button type="button" className="chip" onClick={() => preset(todayYmd(-1), todayYmd(-1))}>Kemarin</button>
@@ -218,6 +248,7 @@ export default function TransactionsPage() {
                       <th>Referensi</th>
                       <SortHeader label="Status matching" col="match_status" sort={sort} order={order} onSort={onSort} />
                       <th>POS Order ID</th>
+                      <th>API POS</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -244,6 +275,14 @@ export default function TransactionsPage() {
                           {t.pos_order_id ? <span className="mono small">{t.pos_order_id}</span> : <span className="faint">-</span>}
                           {t.pos_customer_name && <div className="sub">{t.pos_customer_name}</div>}
                         </td>
+                        <td className="nowrap" onClick={(e) => e.stopPropagation()}>
+                          <PosVisibilityBadge t={t} sm />
+                          <div className="mt-1">
+                            <button type="button" className="btn xs" onClick={() => setVisTarget(t)}>
+                              {t.pos_visible ? '🙈 Sembunyikan' : '👁 Tampilkan'}
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -254,6 +293,20 @@ export default function TransactionsPage() {
           )}
         </DataState>
       </Card>
+
+      {visTarget && (
+        <PosVisibilityModal
+          t={visTarget}
+          isAdmin={isAdmin}
+          onClose={() => setVisTarget(null)}
+          onDone={async (r) => {
+            const m = posVisibilityMessage(r);
+            if (m.ok) toast.success(m.msg);
+            else toast.info(m.msg);
+            await state.reload();
+          }}
+        />
+      )}
     </>
   );
 }
