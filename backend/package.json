@@ -13,7 +13,7 @@
     "dev": "node --watch src/index.js",
     "migrate": "node src/db/migrate.js",
     "seed:demo": "node scripts/seed-demo.js",
-    "test": "node --test --test-concurrency=1 test/unit.test.js test/api.test.js test/webhook.test.js test/dashboard.test.js"
+    "test": "node --test --test-concurrency=1 test/unit.test.js test/api.test.js test/webhook.test.js test/dashboard.test.js test/pos.test.js"
   },
   "license": "UNLICENSED",
   "dependencies": {

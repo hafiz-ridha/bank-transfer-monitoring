@@ -13,7 +13,7 @@ Waktu: ISO-8601 (`2026-11-27T10:00:00+07:00` atau `...Z`). Nominal: integer rupi
 | Validasi gagal | 400 `VALIDATION_ERROR` |
 | Rate limit | 429 `RATE_LIMITED` |
 
-Kode error penting: `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `INVALID_DEVICE_TOKEN` (401), `CLOCK_SKEW` (401), `MISSING_REQUEST_TIME` (400), `INVALID_PAIRING_CODE` (401), `INVALID_API_KEY` (401), `ORDER_ID_CONFLICT` (409), `INTERNAL_ERROR` (500).
+Kode error penting (kode yang lebih spesifik untuk 409 ada di `error.details.code`): `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `INVALID_DEVICE_TOKEN` (401), `CLOCK_SKEW` (401), `MISSING_REQUEST_TIME` (400), `INVALID_PAIRING_CODE` (401), `INVALID_API_KEY` (401), `ORDER_ID_CONFLICT` (409), `INTERNAL_ERROR` (500).
 
 ## Enum
 
@@ -274,8 +274,50 @@ Header: `X-API-Key: btm_pos_...` (dibuat admin di dashboard > Pengaturan > API).
 
 ### POST /pos/orders/{order_id}/cancel → Payment (409 jika sudah dibayar)
 
+### GET /pos/transactions → daftar transaksi masuk (baca saja)
+
+Query (semua opsional):
+
+| Parameter | Keterangan |
+|---|---|
+| `date_from`, `date_to` | `YYYY-MM-DD`, zona waktu operasional (pengaturan `general.timezone`) |
+| `since` | ISO 8601. Hanya transaksi yang **dicatat server** setelah waktu ini (bandingkan dengan `recorded_at`), untuk polling inkremental. |
+| `status` | `match_status`, bisa dipisah koma, mis. `UNMATCHED,AMBIGUOUS` |
+| `amount`, `amount_min`, `amount_max` | Nominal (Rupiah, bilangan bulat) |
+| `bank_code` | mis. `BCA` |
+| `page`, `page_size` | Default `1` & `50`, `page_size` maksimal 200 |
+| `order` | `desc` (default, terbaru dulu) atau `asc`, berdasarkan `recorded_at` |
+
+```json
+{ "data": [
+    { "transaction_id": "TRX-000012", "bank_code": "BCA", "account_alias": "BCA Toko", "sender_name": "SITI AMINAH",
+      "amount": 77000, "reference_number": "BCA12127", "transaction_time": "...", "received_time": "...",
+      "match_status": "UNMATCHED", "matched_at": null, "order_id": null, "recorded_at": "2026-11-28T01:44:14.512Z" } ],
+  "pagination": { "page": 1, "page_size": 50, "total": 1, "total_pages": 1 },
+  "totals": { "count": 1, "amount": 77000 } }
+```
+
+- `order_id` diisi bila transaksi sudah tertaut ke order (`MATCHED` / `MANUAL_VERIFIED`).
+- Polling: simpan `recorded_at` terbesar yang sudah diproses, lalu panggil `?since=<nilai itu>&order=asc`.
+- Transaksi dari pengirim di **Pengaturan → API POS** (`pos_api.hidden_senders`) **tidak ditampilkan** dan tidak bisa ditautkan lewat API POS. Transaksi itu tetap tampil di dashboard.
+
+### POST /pos/orders/{order_id}/match → Payment
+
+Sistem POS menautkan transaksi masuk ke order, misalnya untuk transfer ambigu atau terlambat yang sudah dicek kasir.
+
+```json
+{ "transaction_id": "TRX-000012", "note": "opsional, dicatat di audit log" }
+```
+
+- Aturan sama dengan verifikasi manual di dashboard: nominal transaksi = nominal order, transaksi belum dipakai order lain, dan order belum lunas atau dibatalkan. Order `EXPIRED` boleh ditautkan (transfer terlambat).
+- Hasil: transaksi `MANUAL_VERIFIED` (alasan `pos_verification`), order `PAID` dengan `matched_by: "MANUAL"`, audit log `match.pos_verify` (aktor: nama API key). Webhook `payment.matched` tetap dikirim bila aktif.
+- 200: berhasil, atau pasangan yang sama sudah tertaut sebelumnya (aman di-retry).
+- 400: nominal berbeda atau body tidak valid.
+- 404: order tidak ada, atau transaksi tidak ada / disembunyikan dari API POS.
+- 409: `error.details.code` = `TRANSACTION_ALREADY_USED` (transaksi sudah untuk order lain), `ORDER_ALREADY_PAID`, atau order dibatalkan.
+
 ### Webhook `payment.matched`
-Dikirim (POST) ke URL di pengaturan saat order lunas (otomatis atau verifikasi manual). **Tidak pernah** dikirim untuk transaksi ambigu.
+Dikirim (POST) ke URL di pengaturan saat order lunas (otomatis, verifikasi manual, atau match dari POS). **Tidak pernah** dikirim untuk transaksi ambigu.
 
 Headers:
 ```

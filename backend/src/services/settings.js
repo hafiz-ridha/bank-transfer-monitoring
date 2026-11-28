@@ -43,6 +43,13 @@ export const SETTING_DEFS = {
   'webhook.max_attempts': { type: 'int', min: 1, max: 50, default: 10, group: 'webhook', label: 'Maksimal percobaan kirim' },
   'webhook.timeout_ms': { type: 'int', min: 1000, max: 60000, default: 10000, group: 'webhook', label: 'Timeout (ms)' },
 
+  // API POS: transaksi yang tidak berkaitan dengan POS disembunyikan dari API key POS
+  // (GET /pos/transactions & POST /pos/orders/:id/match). Tetap tampil di dashboard.
+  'pos_api.hidden_senders': {
+    type: 'list', default: [], maxItems: 200, maxLength: 100, group: 'pos_api',
+    label: 'Sembunyikan dari API POS — nama pengirim (satu per baris, cocok jika nama mengandung teks ini)',
+  },
+
   // Alert (PRD §5.3)
   'alerts.telegram_enabled': { type: 'bool', default: false, group: 'alerts', label: 'Kirim alert ke Telegram' },
   'alerts.telegram_chat_id': { type: 'string', default: '', group: 'alerts', label: 'Telegram chat ID' },
@@ -82,6 +89,22 @@ function validateValue(key, value) {
         throw badRequest(`${key}: zona waktu tidak valid`);
       }
       return value;
+    case 'list': {
+      // Array string, atau teks satu-per-baris dari form dashboard.
+      const raw = typeof value === 'string' ? value.split(/\r?\n/) : value;
+      if (!Array.isArray(raw) || raw.some((v) => typeof v !== 'string')) throw badRequest(`${key} harus daftar teks`);
+      const seen = new Set();
+      const out = [];
+      for (const item of raw.map((v) => v.trim().replace(/\s+/g, ' ')).filter(Boolean)) {
+        if (item.length > def.maxLength) throw badRequest(`${key}: "${item.slice(0, 20)}…" lebih dari ${def.maxLength} karakter`);
+        if (!seen.has(item.toLowerCase())) {
+          seen.add(item.toLowerCase());
+          out.push(item);
+        }
+      }
+      if (out.length > def.maxItems) throw badRequest(`${key}: maksimal ${def.maxItems} baris`);
+      return out;
+    }
     default:
       if (typeof value !== 'string') throw badRequest(`${key} harus string`);
       return value.trim();

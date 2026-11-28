@@ -59,6 +59,7 @@ export const MATCH_STATUS_ORDER: MatchStatus[] = ['MATCHED', 'MANUAL_VERIFIED', 
 const MATCH_REASON: Record<string, string> = {
   single_candidate: 'Satu kandidat memenuhi semua aturan',
   manual_verification: 'Diverifikasi manual',
+  pos_verification: 'Diverifikasi dari sistem POS (API)',
   multiple_candidates: 'Lebih dari satu order kandidat',
   competing_transactions: 'Ada transfer lain dengan nominal sama untuk order ini',
   auto_match_disabled: 'Pencocokan otomatis dimatikan',

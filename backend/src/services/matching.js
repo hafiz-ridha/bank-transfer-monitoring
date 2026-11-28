@@ -130,8 +130,11 @@ export function createMatchingService({ db, settings, log, onMatched }) {
     );
   }
 
-  /** Menandai transaksi dibayarkan ke order (dipakai matching otomatis & verifikasi manual). */
-  async function settle(tx, trx, order, matchRow, { manual, user, note, req, s }) {
+  /**
+   * Menandai transaksi dibayarkan ke order (dipakai matching otomatis & verifikasi manual).
+   * `actor`/`reason` opsional untuk keputusan dari luar dashboard (mis. sistem POS).
+   */
+  async function settle(tx, trx, order, matchRow, { manual, user, actor, reason, note, req, s }) {
     const status = manual ? 'MANUAL_VERIFIED' : 'MATCHED';
     await tx.query(
       `UPDATE payment_matches SET status = $2, decided_by = $3, decided_at = now(), note = COALESCE($4, note), updated_at = now() WHERE id = $1`,
@@ -145,7 +148,7 @@ export function createMatchingService({ db, settings, log, onMatched }) {
     await tx.query(
       `UPDATE incoming_transactions SET match_status = $2, matched_order_id = $3, match_score = $4, matched_at = now(),
          match_reason = $5, note = COALESCE($6, note), updated_at = now() WHERE id = $1`,
-      [trx.id, status, order.id, matchRow.score, manual ? 'manual_verification' : 'single_candidate', note ?? null],
+      [trx.id, status, order.id, matchRow.score, reason ?? (manual ? 'manual_verification' : 'single_candidate'), note ?? null],
     );
     await tx.query(
       `UPDATE pos_orders SET status = 'PAID', payment_status = 'PAID', paid_transaction_id = $2, paid_at = $4,
@@ -160,8 +163,8 @@ export function createMatchingService({ db, settings, log, onMatched }) {
     const paidAt = trxTime(trx);
     await enqueuePaymentWebhook(tx, s, { order, trx, paidAt, matchType: manual ? 'manual' : 'auto' });
     await audit(tx, {
-      actor: manual ? { type: 'user', id: user.id, label: user.email } : systemActor,
-      action: manual ? 'match.manual_verify' : 'match.auto',
+      actor: actor ?? (manual ? { type: 'user', id: user.id, label: user.email } : systemActor),
+      action: actor?.type === 'pos' ? 'match.pos_verify' : manual ? 'match.manual_verify' : 'match.auto',
       entityType: 'transaction', entityId: trx.id,
       after: { order_id: order.order_id, transaction_code: trx.transaction_code, score: matchRow.score, status },
       note, req,
@@ -355,8 +358,12 @@ export function createMatchingService({ db, settings, log, onMatched }) {
     });
   }
 
-  /** Admin menautkan transaksi ke order yang bukan kandidat otomatis (mis. transfer terlambat). */
-  async function assign(transactionId, orderRef, user, note, req) {
+  /**
+   * Admin (atau sistem POS lewat API key) menautkan transaksi ke order, termasuk yang bukan kandidat
+   * otomatis (mis. transfer terlambat). Aturan sama: nominal wajib sama, transaksi & order belum terpakai.
+   * @param {{actor?, reason?}} [opts] aktor non-user (POS) & alasan yang dicatat di transaksi
+   */
+  async function assign(transactionId, orderRef, user, note, req, { actor, reason } = {}) {
     let followUps = [];
     const s = await settings.all();
     const out = await db.tx(async (tx) => {
@@ -377,7 +384,7 @@ export function createMatchingService({ db, settings, log, onMatched }) {
          RETURNING *`,
         [trx.id, order.id, c.score, JSON.stringify(c.breakdown), JSON.stringify(c.reasons)],
       );
-      followUps = await settle(tx, trx, order, m, { manual: true, user, note, req, s });
+      followUps = await settle(tx, trx, order, m, { manual: true, user, actor, reason, note, req, s });
       return { transaction_id: trx.id, order_id: order.order_id, status: 'MANUAL_VERIFIED' };
     });
     onMatched?.();

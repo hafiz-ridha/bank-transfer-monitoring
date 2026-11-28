@@ -490,8 +490,8 @@ export interface BankNotification {
 }
 
 // ------------------------------------------------------------------ pengaturan
-export type SettingType = 'int' | 'number' | 'bool' | 'string' | 'url' | 'timezone';
-export type SettingValue = string | number | boolean;
+export type SettingType = 'int' | 'number' | 'bool' | 'string' | 'url' | 'timezone' | 'list';
+export type SettingValue = string | number | boolean | string[];
 
 export interface SettingDef {
   key: string;

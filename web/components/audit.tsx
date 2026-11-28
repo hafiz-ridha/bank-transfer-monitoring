@@ -6,6 +6,7 @@ import { Empty, JsonView } from './ui';
 export const AUDIT_ACTION: Record<string, string> = {
   'match.auto': 'Dicocokkan otomatis',
   'match.manual_verify': 'Diverifikasi manual',
+  'match.pos_verify': 'Diverifikasi dari POS',
   'match.reject': 'Kandidat ditolak',
   'transaction.ignore': 'Transaksi diabaikan',
   'transaction.reopen': 'Dibuka kembali',

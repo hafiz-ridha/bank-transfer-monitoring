@@ -20,6 +20,11 @@ const GROUPS: { key: string; title: string; hint: string }[] = [
   { key: 'matching', title: 'Matching', hint: 'Aturan pencocokan transfer ↔ order POS (PRD §6).' },
   { key: 'retention', title: 'Retensi', hint: 'Lama penyimpanan data sebelum dihapus otomatis (PRD §11).' },
   { key: 'webhook', title: 'Webhook POS', hint: 'Notifikasi payment.matched ke sistem POS (PRD §7.3).' },
+  {
+    key: 'pos_api',
+    title: 'API POS',
+    hint: 'Transaksi yang boleh dilihat & ditautkan sistem POS lewat API key (GET /pos/transactions, POST /pos/orders/{id}/match). Transaksi yang disembunyikan tetap tampil di dashboard.',
+  },
   { key: 'alerts', title: 'Alert', hint: 'Kanal notifikasi alert perangkat. Token bot Telegram diatur di server (env backend).' },
   { key: 'security', title: 'Keamanan', hint: 'Proteksi replay request dari perangkat Android.' },
 ];
@@ -30,9 +35,16 @@ type Draft = Record<string, string | boolean>;
 
 function toDraft(defs: SettingDef[]): Draft {
   const d: Draft = {};
-  for (const s of defs) d[s.key] = s.type === 'bool' ? Boolean(s.value) : s.value === null || s.value === undefined ? '' : String(s.value);
+  for (const s of defs) {
+    if (s.type === 'bool') d[s.key] = Boolean(s.value);
+    else if (s.type === 'list') d[s.key] = Array.isArray(s.value) ? s.value.join('\n') : '';
+    else d[s.key] = s.value === null || s.value === undefined ? '' : String(s.value);
+  }
   return d;
 }
+
+/** Teks satu-per-baris -> daftar (baris kosong dibuang). */
+const toList = (raw: string | boolean | undefined) => String(raw ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
 
 export default function SettingsPage() {
   const { isAdmin } = useAuth();
@@ -132,7 +144,13 @@ function SettingsGroup({
       const def = defs.find((s) => s.key === key)!;
       const raw = draft[key];
       if (def.type === 'bool') values[key] = Boolean(raw);
-      else if (def.type === 'int' || def.type === 'number') {
+      else if (def.type === 'list') {
+        const items = toList(raw);
+        const tooLong = items.find((s) => s.length > 100);
+        if (tooLong) errs[key] = `Maksimal 100 karakter per baris: "${tooLong.slice(0, 20)}…"`;
+        else if (items.length > 200) errs[key] = 'Maksimal 200 baris';
+        else values[key] = items;
+      } else if (def.type === 'int' || def.type === 'number') {
         const n = def.type === 'int' ? Number.parseInt(String(raw), 10) : Number.parseFloat(String(raw).replace(',', '.'));
         if (!Number.isFinite(n) || (def.type === 'int' && !/^-?\d+$/.test(String(raw).trim()))) errs[key] = def.type === 'int' ? 'Harus bilangan bulat' : 'Harus angka';
         else if ((def.min !== undefined && n < def.min) || (def.max !== undefined && n > def.max)) errs[key] = `Harus di antara ${def.min} dan ${def.max}`;
@@ -221,6 +239,28 @@ function SettingField({ def, value, onChange, readOnly, error }: {
     return (
       <Field label={def.label} help={help} htmlFor={id}>
         <Switch id={id} ariaLabel={def.label} checked={Boolean(value)} onChange={onChange} disabled={readOnly} label={value ? 'Aktif' : 'Nonaktif'} />
+      </Field>
+    );
+  }
+  if (def.type === 'list') {
+    const count = toList(value).length;
+    return (
+      <Field
+        label={def.label}
+        htmlFor={id}
+        error={error}
+        className="full"
+        help={<>{help} · {count ? `${count} pengirim disembunyikan` : 'Kosong = semua transaksi tampil di API POS'} · tidak membedakan huruf besar/kecil, mis. <code>PT GAJI</code> menyembunyikan &quot;PT GAJI KARYAWAN&quot;</>}
+      >
+        <textarea
+          id={id}
+          className="textarea mono"
+          rows={Math.min(10, Math.max(4, count + 1))}
+          placeholder={'PT GAJI KARYAWAN\nIBU RINA'}
+          value={String(value ?? '')}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={readOnly}
+        />
       </Field>
     );
   }
