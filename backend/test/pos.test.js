@@ -181,3 +181,42 @@ test('pos_api.hidden_senders: pengirim tertentu disembunyikan dari API POS, teta
   const all = await h.call('GET', '/api/v1/pos/transactions?amount=810000', { headers: pos });
   assert.equal(all.body.pagination.total, 3);
 });
+
+test('GET /pos/devices: status perangkat monitoring untuk POS tanpa data internal', async () => {
+  assert.equal((await h.call('GET', '/api/v1/pos/devices')).status, 401);
+  const hb = (over = {}) => ({
+    device_id: device.uuid, heartbeat_id: crypto.randomUUID(), app_version: '1.0.0', notification_access: true, listener_connected: true,
+    network_connected: true, battery_optimization_exempt: true, pending_queue: 0, reported_at: new Date().toISOString(), ...over,
+  });
+  assert.equal((await h.call('POST', '/api/v1/devices/heartbeat', { headers: device.headers(), body: hb() })).body.status, 'ACTIVE');
+  // Perangkat kedua baru dibuat (belum dipasangkan di HP).
+  const pending = await h.call('POST', '/api/v1/devices', { headers: h.admin, body: { device_name: 'HP Cadangan' } });
+
+  const r = await h.call('GET', '/api/v1/pos/devices', { headers: pos });
+  assert.equal(r.status, 200);
+  const main = r.body.data.find((d) => d.id === device.id);
+  assert.equal(main.status, 'ACTIVE');
+  assert.equal(main.notification_access, true);
+  assert.equal(main.registered, true);
+  for (const secret of ['device_uuid', 'token_issued_at', 'pairing_pending', 'pairing_expires_at', 'last_error']) {
+    assert.ok(!(secret in main), `${secret} tidak boleh tampil di API POS`);
+  }
+  const spare = r.body.data.find((d) => d.id === pending.body.device.id);
+  assert.equal(spare.registered, false);
+  assert.equal(r.body.summary.total, 2);
+  assert.equal(r.body.summary.active, 1);
+  assert.equal(r.body.summary.monitoring_ok, true);
+
+  // Izin notifikasi dicabut -> tidak ada perangkat ACTIVE -> monitoring_ok false.
+  await h.call('POST', '/api/v1/devices/heartbeat', { headers: device.headers(), body: hb({ notification_access: false }) });
+  const r2 = await h.call('GET', '/api/v1/pos/devices', { headers: pos });
+  assert.equal(r2.body.data.find((d) => d.id === device.id).status, 'PERMISSION_ERROR');
+  assert.equal(r2.body.summary.permission_error, 1);
+  assert.equal(r2.body.summary.monitoring_ok, false);
+
+  // Perangkat yang dinonaktifkan di dashboard tidak ditampilkan.
+  await h.call('PATCH', `/api/v1/devices/${pending.body.device.id}`, { headers: h.admin, body: { is_active: false } });
+  const r3 = await h.call('GET', '/api/v1/pos/devices', { headers: pos });
+  assert.equal(r3.body.summary.total, 1);
+  assert.ok(!r3.body.data.some((d) => d.id === pending.body.device.id));
+});

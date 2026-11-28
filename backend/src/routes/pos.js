@@ -40,6 +40,30 @@ const posTransaction = (r) => ({
   recorded_at: r.created_at,
 });
 
+/** Status perangkat monitoring untuk POS — tanpa data internal (token, pairing, UUID perangkat). */
+const posDevice = (d) => ({
+  id: d.id,
+  device_name: d.device_name,
+  status: d.status,
+  status_reason: d.status_reason,
+  status_source: d.status_source,
+  connection_state: d.connection_state,
+  heartbeat_age_seconds: d.heartbeat_age_seconds,
+  issues: d.issues,
+  notification_access: d.notification_access,
+  listener_connected: d.listener_connected,
+  network_connected: d.network_connected,
+  battery_optimization_exempt: d.battery_optimization_exempt,
+  last_heartbeat_at: d.last_heartbeat_at,
+  last_notification_at: d.last_notification_at,
+  last_successful_sync_at: d.last_successful_sync_at,
+  pending_queue: d.pending_queue,
+  failed_queue: d.failed_queue,
+  device_model: d.device_model,
+  app_version: d.app_version,
+  registered: d.registered,
+});
+
 /** Pola ILIKE untuk pengirim yang disembunyikan dari API POS ("mengandung", tanpa beda besar/kecil). */
 const hiddenSenderPatterns = (names) => names.map((n) => `%${String(n).replace(/[\\%_]/g, '\\$&')}%`);
 /** Sama dengan filter SQL di atas, untuk satu nama pengirim. */
@@ -49,7 +73,7 @@ const isHiddenSender = (sender, names) => {
 };
 
 export default async function posRoutes(app) {
-  const { db, orders, matching, settings } = app.services;
+  const { db, orders, matching, settings, devices } = app.services;
   const auth = { preHandler: app.requirePos };
   const hiddenSenders = async () => (await settings.get('pos_api.hidden_senders')) ?? [];
 
@@ -116,6 +140,30 @@ export default async function posRoutes(app) {
       if (!(err instanceof HttpError && o?.paid_transaction_id === trx.id)) throw err;
     }
     return orders.payment(orderId);
+  });
+
+  /**
+   * Status perangkat Android monitoring (baca saja), dihitung server dari heartbeat (PRD §4.3).
+   * Hanya perangkat yang aktif di dashboard. `monitoring_ok` = minimal satu perangkat ACTIVE,
+   * sehingga POS bisa memperingatkan kasir bila deteksi transfer sedang tidak berjalan.
+   */
+  app.get('/devices', auth, async () => {
+    const data = (await devices.list()).filter((d) => d.is_active).map(posDevice);
+    const count = (st) => data.filter((d) => d.status === st).length;
+    return {
+      data,
+      summary: {
+        total: data.length,
+        active: count('ACTIVE'),
+        warning: count('WARNING'),
+        inactive: count('INACTIVE'),
+        permission_error: count('PERMISSION_ERROR'),
+        disconnected: count('DISCONNECTED'),
+        unknown: count('UNKNOWN'),
+        monitoring_ok: data.some((d) => d.status === 'ACTIVE'),
+        checked_at: new Date().toISOString(),
+      },
+    };
   });
 
   /**

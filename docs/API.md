@@ -301,6 +301,33 @@ Query (semua opsional):
 - Polling: simpan `recorded_at` terbesar yang sudah diproses, lalu panggil `?since=<nilai itu>&order=asc`.
 - Transaksi dari pengirim di **Pengaturan → API POS** (`pos_api.hidden_senders`) **tidak ditampilkan** dan tidak bisa ditautkan lewat API POS. Transaksi itu tetap tampil di dashboard.
 
+### GET /pos/devices → status perangkat monitoring (baca saja)
+
+Status HP Android yang membaca notifikasi bank, dihitung server dari heartbeat (PRD §4.3). Hanya perangkat yang aktif di dashboard yang ditampilkan.
+
+```json
+{ "data": [
+    { "id": "808401f1-…", "device_name": "Android Monitoring 01", "status": "ACTIVE", "status_reason": "ok",
+      "status_source": "device_reported", "connection_state": "connected", "heartbeat_age_seconds": 42,
+      "issues": [], "notification_access": true, "listener_connected": true, "network_connected": true,
+      "battery_optimization_exempt": true, "last_heartbeat_at": "...", "last_notification_at": "...",
+      "last_successful_sync_at": "...", "pending_queue": 0, "failed_queue": 0,
+      "device_model": "SM-A155F", "app_version": "1.0.0", "registered": true } ],
+  "summary": { "total": 1, "active": 1, "warning": 0, "inactive": 0, "permission_error": 0, "disconnected": 0,
+               "unknown": 0, "monitoring_ok": true, "checked_at": "2026-11-28T03:00:00.000Z" } }
+```
+
+- `status`:
+  - `ACTIVE`: heartbeat ≤ 2 menit.
+  - `WARNING`: 2–5 menit, atau ada masalah ringan (antrean menumpuk, optimasi baterai).
+  - `INACTIVE`: > 5 menit tanpa heartbeat.
+  - `PERMISSION_ERROR`: Notification Access dicabut.
+  - `DISCONNECTED`, `UNKNOWN`: belum pernah melapor atau laporan tidak lengkap.
+- `summary.monitoring_ok` = minimal satu perangkat `ACTIVE`. Bila `false`, POS sebaiknya memperingatkan kasir bahwa transfer tidak terdeteksi otomatis dan perlu cek mutasi manual.
+- `issues[]`: `{ code, severity, message }`, berisi rincian masalah (bahasa Indonesia), mis. listener terputus atau antrean belum terkirim.
+- `connection_state`: `connected`, `disconnected_reported` (HP melapor listener terputus), `disconnected_suspected` (heartbeat terlambat), atau `unknown`.
+- `registered: false` = perangkat sudah dibuat di dashboard tetapi belum dipasangkan di HP.
+
 ### POST /pos/orders/{order_id}/match → Payment
 
 Sistem POS menautkan transaksi masuk ke order, misalnya untuk transfer ambigu atau terlambat yang sudah dicek kasir.
